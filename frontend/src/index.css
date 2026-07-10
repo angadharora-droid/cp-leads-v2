@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Centre Point Hospitality — Leads CRM theme.
+ * Palette: teal/charcoal with a warm amber accent.
+ * All colors are stored as raw HSL channels so Tailwind can wrap them
+ * in hsl(var(--token)) with optional opacity modifiers.
+ */
+@layer base {
+  :root {
+    --background: 180 22% 99%;
+    --foreground: 200 18% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 200 18% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 18% 14%;
+
+    --primary: 175 70% 30%;
+    --primary-foreground: 170 60% 97%;
+
+    --secondary: 180 18% 94%;
+    --secondary-foreground: 200 20% 20%;
+
+    --muted: 185 16% 95%;
+    --muted-foreground: 200 10% 42%;
+
+    --accent: 35 92% 52%;
+    --accent-foreground: 30 50% 12%;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 190 16% 88%;
+    --input: 190 16% 86%;
+    --ring: 175 70% 34%;
+
+    --radius: 0.6rem;
+
+    /* Status colors — used by StatusBadge and section accents. */
+    --status-contracted: 142 64% 38%;
+    --status-non-contracted: 215 16% 47%;
+    --status-new: 215 16% 47%;
+    --status-contacted: 217 91% 55%;
+    --status-qualified: 244 70% 58%;
+    --status-proposal: 35 92% 50%;
+    --status-negotiation: 271 70% 55%;
+    --status-won: 142 64% 38%;
+    --status-lost: 0 72% 50%;
+
+    /* Chart palette. */
+    --chart-1: 175 70% 34%;
+    --chart-2: 35 92% 52%;
+    --chart-3: 217 80% 56%;
+    --chart-4: 271 60% 56%;
+    --chart-5: 142 55% 42%;
+    --chart-6: 200 18% 40%;
+  }
+
+  .dark {
+    --background: 200 24% 9%;
+    --foreground: 180 18% 92%;
+
+    --card: 200 22% 12%;
+    --card-foreground: 180 18% 92%;
+
+    --popover: 200 24% 11%;
+    --popover-foreground: 180 18% 92%;
+
+    --primary: 173 62% 46%;
+    --primary-foreground: 200 30% 8%;
+
+    --secondary: 200 16% 18%;
+    --secondary-foreground: 180 16% 90%;
+
+    --muted: 200 16% 17%;
+    --muted-foreground: 195 12% 64%;
+
+    --accent: 35 90% 56%;
+    --accent-foreground: 30 50% 10%;
+
+    --destructive: 0 64% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 200 14% 22%;
+    --input: 200 14% 24%;
+    --ring: 173 62% 50%;
+
+    --status-contracted: 142 56% 52%;
+    --status-non-contracted: 215 14% 60%;
+    --status-new: 215 14% 60%;
+    --status-contacted: 217 85% 64%;
+    --status-qualified: 244 70% 70%;
+    --status-proposal: 35 90% 58%;
+    --status-negotiation: 271 68% 68%;
+    --status-won: 142 56% 52%;
+    --status-lost: 0 70% 62%;
+
+    --chart-1: 173 62% 50%;
+    --chart-2: 35 90% 58%;
+    --chart-3: 217 80% 66%;
+    --chart-4: 271 64% 70%;
+    --chart-5: 142 52% 54%;
+    --chart-6: 195 14% 66%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+}
