@@ -2,11 +2,11 @@ import axios from 'axios';
 
 /**
  * Axios instance for the CPH Leads CRM API.
- * - baseURL '/api' (Vite proxies to the backend in dev).
+ * - baseURL from VITE_API_BASE_URL, defaulting to '/api' (Vite proxies to the backend in dev).
  * - withCredentials true so the httpOnly refresh cookie (cph_rt) is sent.
  */
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   withCredentials: true,
 });
 
