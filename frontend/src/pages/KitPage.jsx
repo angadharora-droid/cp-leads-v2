@@ -23,6 +23,7 @@ import {
 
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -201,15 +202,139 @@ function pickKit(res) {
   return res?.data?.data?.kit ?? null;
 }
 
-function TextField({ label, value, onChange, placeholder, className }) {
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isIsoDate(value) {
+  return ISO_DATE_RE.test(value || '');
+}
+
+/** '' or a plain number ("6499", "64.5") — commas/currency prefixes are not. */
+function isNumericish(value) {
+  return /^\d*\.?\d*$/.test(value ?? '');
+}
+
+function sanitizeNumber(value, { integer } = {}) {
+  let s = value.replace(integer ? /[^\d]/g : /[^\d.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot !== -1) s = s.slice(0, dot + 1) + s.slice(dot + 1).replaceAll('.', '');
+  return s;
+}
+
+/**
+ * Input that adapts to the kind of value it holds:
+ *  - `date`    → native date picker (stores YYYY-MM-DD)
+ *  - `number`  → digits + one decimal point only, right-aligned
+ *  - `integer` → digits only, right-aligned
+ *  - `tel` / `email` / `text` → plain input with matching keyboard
+ * Values saved before this existed (e.g. "25th July 2026", "Rs. 6,499")
+ * don't fit the typed controls, so those fall back to a plain text input
+ * instead of appearing blank.
+ */
+function SmartInput({ type = 'text', value, onChange, className, prefix, ...props }) {
+  const val = value ?? '';
+
+  if (type === 'date' && (val === '' || isIsoDate(val))) {
+    return (
+      <Input
+        type="date"
+        value={val}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn('tabular-nums', className)}
+        {...props}
+      />
+    );
+  }
+
+  if ((type === 'number' || type === 'integer') && isNumericish(val)) {
+    const input = (
+      <Input
+        inputMode={type === 'integer' ? 'numeric' : 'decimal'}
+        value={val}
+        onChange={(e) =>
+          onChange(sanitizeNumber(e.target.value, { integer: type === 'integer' }))
+        }
+        className={cn('text-right tabular-nums', prefix && 'pl-10', className)}
+        {...props}
+      />
+    );
+    if (!prefix) return input;
+    return (
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">
+          {prefix}
+        </span>
+        {input}
+      </div>
+    );
+  }
+
+  return (
+    <Input
+      type={type === 'email' ? 'email' : type === 'tel' ? 'tel' : 'text'}
+      value={val}
+      onChange={(e) => onChange(e.target.value)}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+function TextField({ label, value, onChange, placeholder, className, type, prefix }) {
   return (
     <div className={'space-y-1.5 ' + (className || '')}>
       <Label className="text-xs">{label}</Label>
-      <Input
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
+      <SmartInput
+        type={type}
+        prefix={prefix}
+        value={value}
+        onChange={onChange}
         placeholder={placeholder}
       />
+    </div>
+  );
+}
+
+/**
+ * From/to date pickers stored as one string: "YYYY-MM-DD" or
+ * "YYYY-MM-DD to YYYY-MM-DD" (the PDF prints it as e.g. "25th & 26th July 2026").
+ * Legacy free-text values keep a plain text input.
+ */
+function DateRangeField({ label, value, onChange, className }) {
+  const parts = String(value || '').split(' to ');
+  const isRangeValue = !value || parts.every((p) => p === '' || isIsoDate(p));
+  if (!isRangeValue) {
+    return (
+      <TextField label={label} value={value} onChange={onChange} className={className} />
+    );
+  }
+  const from = parts[0] || '';
+  const to = parts[1] || '';
+  const set = (nextFrom, nextTo) => {
+    if (nextFrom && nextTo) onChange(`${nextFrom} to ${nextTo}`);
+    else onChange(nextFrom || nextTo || '');
+  };
+  return (
+    <div className={'space-y-1.5 ' + (className || '')}>
+      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="date"
+          className="tabular-nums"
+          value={from}
+          max={to || undefined}
+          onChange={(e) => set(e.target.value, to)}
+          aria-label={`${label} — from`}
+        />
+        <span className="text-xs text-muted-foreground">to</span>
+        <Input
+          type="date"
+          className="tabular-nums"
+          value={to}
+          min={from || undefined}
+          onChange={(e) => set(from, e.target.value)}
+          aria-label={`${label} — to`}
+        />
+      </div>
     </div>
   );
 }
@@ -295,10 +420,11 @@ function RowsEditor({ title, description, columns, rows, onRowsChange, emptyRow,
                   </td>
                   {columns.map((col) => (
                     <td key={col.key} className="p-1">
-                      <Input
+                      <SmartInput
+                        type={col.type}
                         className="h-9 rounded-md border-transparent bg-transparent px-2 shadow-none hover:border-input focus-visible:border-ring focus-visible:bg-background"
                         value={row[col.key] ?? ''}
-                        onChange={(e) => updateCell(idx, col.key, e.target.value)}
+                        onChange={(value) => updateCell(idx, col.key, value)}
                         placeholder={col.placeholder}
                         aria-label={`${title} — row ${idx + 1} — ${col.label}`}
                       />
@@ -595,20 +721,21 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
             onChange={(v) => update('eventType', v)}
             placeholder="Residential Conference"
           />
-          <TextField
+          <DateRangeField
             label="Event Dates"
             value={form.eventDates}
             onChange={(v) => update('eventDates', v)}
-            placeholder="25th & 26th July 2026"
           />
           <TextField
             label="Mobile Number"
+            type="tel"
             value={form.mobile}
             onChange={(v) => update('mobile', v)}
             placeholder="+91 …"
           />
           <TextField
             label="Email Address"
+            type="email"
             value={form.email}
             onChange={(v) => update('email', v)}
             placeholder="guest@example.com"
@@ -616,6 +743,7 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
           {!isNew ? (
             <TextField
               label="Contract Number"
+              type="integer"
               value={contractNumber}
               onChange={setContractNumber}
               placeholder="29420"
@@ -667,14 +795,14 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
           <RowsEditor
             title="Room bookings"
             columns={[
-              { key: 'checkIn', label: 'Check-in date', placeholder: '25th July 2026' },
-              { key: 'checkOut', label: 'Check-out date', placeholder: '26th July 2026' },
+              { key: 'checkIn', label: 'Check-in date', type: 'date', width: 140 },
+              { key: 'checkOut', label: 'Check-out date', type: 'date', width: 140 },
               { key: 'occupancyType', label: 'Occupancy', placeholder: 'Single / Double' },
               { key: 'category', label: 'Category', placeholder: 'Run of the House' },
               { key: 'mealPlan', label: 'Meal plan', placeholder: 'CP' },
-              { key: 'numRooms', label: 'No. of rooms', placeholder: '90' },
-              { key: 'rate', label: 'Rate (excl. taxes)', placeholder: 'Rs. 6,499' },
-              { key: 'estRevenue', label: 'Est. revenue', placeholder: 'Rs. 5,84,910' },
+              { key: 'numRooms', label: 'No. of rooms', type: 'integer', placeholder: '90', width: 90 },
+              { key: 'rate', label: 'Rate (Rs., excl. taxes)', type: 'number', placeholder: '6499' },
+              { key: 'estRevenue', label: 'Est. revenue (Rs.)', type: 'number', placeholder: '584910' },
             ]}
             rows={form.rooms}
             onRowsChange={(rows) => update('rooms', rows)}
@@ -683,9 +811,11 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
           />
           <TextField
             label="Estimated Revenue (Rooms)"
+            type="number"
+            prefix="Rs."
             value={form.roomsEstimatedRevenue}
             onChange={(v) => update('roomsEstimatedRevenue', v)}
-            placeholder="Rs. 5,84,910"
+            placeholder="584910"
           />
           <Separator />
           <RowsEditor
@@ -693,7 +823,7 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
             description="Shown as: “In case of any other room category, the room would be charged at the following rates.”"
             columns={[
               { key: 'category', label: 'Rooms category', placeholder: 'Deluxe Suite', width: 180 },
-              { key: 'rate', label: 'Rate (excl. taxes)', placeholder: 'Rs. 15,000', width: 180 },
+              { key: 'rate', label: 'Rate (Rs., excl. taxes)', type: 'number', placeholder: '15000', width: 180 },
             ]}
             rows={form.otherRoomRates}
             onRowsChange={(rows) => update('otherRoomRates', rows)}
@@ -723,14 +853,14 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
           <RowsEditor
             title="Events & meals"
             columns={[
-              { key: 'date', label: 'Date', placeholder: '25th July 2026' },
+              { key: 'date', label: 'Date', type: 'date', width: 140 },
               { key: 'eventType', label: 'Event type', placeholder: 'Gala Dinner' },
               { key: 'venue', label: 'Venue', placeholder: 'Palacio' },
-              { key: 'guaranteedGuests', label: 'Min. guaranteed guests', placeholder: '300' },
+              { key: 'guaranteedGuests', label: 'Min. guaranteed guests', type: 'integer', placeholder: '300' },
               { key: 'menu', label: 'Type of menu', placeholder: 'Mix Menu with Snacks', width: 170 },
-              { key: 'rackRate', label: 'Rack rate', placeholder: 'Rs. 2,200' },
-              { key: 'discountedRate', label: 'Discounted rate', placeholder: 'Rs. 2,000' },
-              { key: 'estRevenue', label: 'Est. revenue', placeholder: 'Rs. 6,00,000' },
+              { key: 'rackRate', label: 'Rack rate (Rs.)', type: 'number', placeholder: '2200' },
+              { key: 'discountedRate', label: 'Discounted rate (Rs.)', type: 'number', placeholder: '2000' },
+              { key: 'estRevenue', label: 'Est. revenue (Rs.)', type: 'number', placeholder: '600000' },
             ]}
             rows={form.events}
             onRowsChange={(rows) => update('events', rows)}
@@ -739,9 +869,11 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
           />
           <TextField
             label="Estimated Revenue (Events)"
+            type="number"
+            prefix="Rs."
             value={form.eventsEstimatedRevenue}
             onChange={(v) => update('eventsEstimatedRevenue', v)}
-            placeholder="Rs. 14,85,000 / Rs. 13,55,000"
+            placeholder="1485000"
           />
         </CardContent>
       </Card>
@@ -759,8 +891,8 @@ function EventKitForm({ form, update, contractNumber, setContractNumber, isNew }
             columns={[
               { key: 'particulars', label: 'Particulars', placeholder: 'AV Equipment', width: 150 },
               { key: 'details', label: 'Requirement details', width: 200 },
-              { key: 'rate', label: 'Rate' },
-              { key: 'estRevenue', label: 'Estimated revenue' },
+              { key: 'rate', label: 'Rate (Rs.)', type: 'number' },
+              { key: 'estRevenue', label: 'Est. revenue (Rs.)', type: 'number' },
             ]}
             rows={form.otherRequirements}
             onRowsChange={(rows) => update('otherRequirements', rows)}
@@ -824,12 +956,14 @@ function CorporateKitForm({ form, update }) {
           />
           <TextField
             label="Mobile Number"
+            type="tel"
             value={form.mobile}
             onChange={(v) => update('mobile', v)}
             placeholder="+91 …"
           />
           <TextField
             label="Email Address"
+            type="email"
             value={form.email}
             onChange={(v) => update('email', v)}
           />
@@ -874,8 +1008,8 @@ function CorporateKitForm({ form, update }) {
               columns={[
                 { key: 'category', label: 'Room category', placeholder: 'Executive' },
                 { key: 'size', label: 'Room size', placeholder: '278 sq.ft' },
-                { key: 'singleRate', label: 'Single rate', placeholder: '4000' },
-                { key: 'doubleRate', label: 'Double rate', placeholder: '5000' },
+                { key: 'singleRate', label: 'Single rate (INR)', type: 'number', placeholder: '4000' },
+                { key: 'doubleRate', label: 'Double rate (INR)', type: 'number', placeholder: '5000' },
               ]}
               rows={property.rows}
               onRowsChange={(rows) => updateProperty(idx, { rows })}
@@ -914,9 +1048,9 @@ function CorporateKitForm({ form, update }) {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Rates Valid Until"
+            type="date"
             value={form.validUntil}
             onChange={(v) => update('validUntil', v)}
-            placeholder="31st March 2027"
           />
           <TextField
             label="Extra Bed Rate"

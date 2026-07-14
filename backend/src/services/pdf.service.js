@@ -136,6 +136,61 @@ function formatLongDate(date = new Date()) {
   });
 }
 
+/* The kit form stores dates as YYYY-MM-DD and amounts as plain numbers;
+   older kits hold free text ("25th July 2026", "Rs. 6,499"). These helpers
+   pretty-print the structured values and pass anything else through verbatim. */
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function ordinal(n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+  if (n % 10 === 1) return `${n}st`;
+  if (n % 10 === 2) return `${n}nd`;
+  if (n % 10 === 3) return `${n}rd`;
+  return `${n}th`;
+}
+
+/** "2026-07-25" → "25th July 2026". */
+function prettyDate(value) {
+  if (!ISO_DATE_RE.test(value || '')) return value;
+  const [y, m, d] = value.split('-').map(Number);
+  return `${ordinal(d)} ${MONTHS[m - 1]} ${y}`;
+}
+
+/** "2026-07-25 to 2026-07-26" → "25th & 26th July 2026". */
+function prettyDateRange(value) {
+  const [from, to] = String(value || '').split(' to ');
+  if (!to) return prettyDate(value);
+  if (!ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to)) return value;
+  if (from === to) return prettyDate(from);
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  if (fy === ty && fm === tm) {
+    const join = td - fd === 1 ? ' & ' : ' to ';
+    return `${ordinal(fd)}${join}${ordinal(td)} ${MONTHS[fm - 1]} ${fy}`;
+  }
+  return `${prettyDate(from)} to ${prettyDate(to)}`;
+}
+
+/** "584910" → "5,84,910" (Indian digit grouping). */
+function prettyNumber(value) {
+  const s = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^\d+(\.\d+)?$/.test(s)) return value;
+  return Number(s).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+/** "6499" → "Rs. 6,499". */
+function prettyMoney(value) {
+  const s = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^\d+(\.\d+)?$/.test(s)) return value;
+  return `Rs. ${Number(s).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+}
+
 /* ----------------------- Static boilerplate sections ---------------------- */
 // Content transcribed from the official Centre Point proposal template.
 
@@ -496,7 +551,7 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
   guestPairs.push(
     ['Guest Name/Organization', d.guestName],
     ['Event Type', d.eventType],
-    ['Event Dates', d.eventDates],
+    ['Event Dates', prettyDateRange(d.eventDates)],
     ['Mobile Number', d.mobile],
     ['Email Address', d.email]
   );
@@ -539,14 +594,14 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
       ].map((t) => ({ text: t, style: 'th' })),
       ...d.rooms.map((r) =>
         [
-          r.checkIn,
-          r.checkOut,
+          prettyDate(r.checkIn),
+          prettyDate(r.checkOut),
           r.occupancyType,
           r.category,
           r.mealPlan,
           r.numRooms,
-          r.rate,
-          r.estRevenue,
+          prettyMoney(r.rate),
+          prettyMoney(r.estRevenue),
         ].map((t) => ({ text: t || '—', style: 'td' }))
       ),
     ];
@@ -558,7 +613,7 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
         {},
         {},
         {},
-        { text: d.roomsEstimatedRevenue, bold: true, alignment: 'center', colSpan: 2, fontSize: 9 },
+        { text: prettyMoney(d.roomsEstimatedRevenue), bold: true, alignment: 'center', colSpan: 2, fontSize: 9 },
         {},
       ]);
     }
@@ -594,7 +649,7 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
           ...otherRates.map((r) => [
             {},
             { text: r.category || '—', style: 'td' },
-            { text: r.rate || '—', style: 'td' },
+            { text: prettyMoney(r.rate) || '—', style: 'td' },
           ]),
         ],
       },
@@ -647,14 +702,14 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
       ].map((t) => ({ text: t, style: 'th' })),
       ...events.map((e) =>
         [
-          e.date,
+          prettyDate(e.date),
           e.eventType,
           e.venue,
           e.guaranteedGuests,
           e.menu,
-          e.rackRate,
-          e.discountedRate,
-          e.estRevenue,
+          prettyMoney(e.rackRate),
+          prettyMoney(e.discountedRate),
+          prettyMoney(e.estRevenue),
         ].map((t) => ({ text: t || '—', style: 'td' }))
       ),
     ];
@@ -665,7 +720,7 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
         {},
         {},
         {},
-        { text: d.eventsEstimatedRevenue, bold: true, alignment: 'center', colSpan: 3, fontSize: 9 },
+        { text: prettyMoney(d.eventsEstimatedRevenue), bold: true, alignment: 'center', colSpan: 3, fontSize: 9 },
         {},
         {},
       ]);
@@ -697,8 +752,8 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
           ...requirements.map((r) => [
             { text: r.particulars || '—', bold: true, alignment: 'center', fontSize: 8.5, margin: [0, 4, 0, 4] },
             { text: r.details || ' ', style: 'td' },
-            { text: r.rate || ' ', style: 'td' },
-            { text: r.estRevenue || ' ', style: 'td' },
+            { text: prettyMoney(r.rate) || ' ', style: 'td' },
+            { text: prettyMoney(r.estRevenue) || ' ', style: 'td' },
           ]),
         ],
       },
@@ -770,7 +825,7 @@ const CORPORATE_SECTIONS = (d) => [
   {
     title: 'RATES IN THIS AGREEMENT ARE:',
     bullets: [
-      d.validUntil ? `Rates are valid till ${d.validUntil}` : 'Rates are valid as agreed',
+      d.validUntil ? `Rates are valid till ${prettyDate(d.validUntil)}` : 'Rates are valid as agreed',
       'Exclusive of GST',
       'Valid for all new bookings and subject to availability',
       'Prior reservation is required from the company to avail the corporate rates',
@@ -882,7 +937,7 @@ const CORPORATE_SECTIONS = (d) => [
       "This agreement comes into effect upon signature by an authorized representative of the 'Company' and once it has been returned to / received by the hotel.",
       "Failing to sign this contract, the hotel will be at liberty to offer accommodation at the 'best available rate' at the time of reservation.",
       d.validUntil
-        ? `The rates contained in this agreement are valid until ${d.validUntil}; the hotel reserves the right to introduce amendments to this contract in the event of major changes of market conditions.`
+        ? `The rates contained in this agreement are valid until ${prettyDate(d.validUntil)}; the hotel reserves the right to introduce amendments to this contract in the event of major changes of market conditions.`
         : 'The hotel reserves the right to introduce amendments to this contract in the event of major changes of market conditions.',
       'To qualify for your corporate rate, all reservations must be made by an authorized representative of the company. No alterations will be made either at the time of arrival or retroactively for bookings which are not made with full company references.',
     ],
@@ -950,8 +1005,8 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
           ...property.rows.map((r) => [
             { text: r.category || '—', style: 'td' },
             { text: r.size || '—', style: 'td' },
-            { text: r.singleRate || '—', style: 'td' },
-            { text: r.doubleRate || '—', style: 'td' },
+            { text: prettyNumber(r.singleRate) || '—', style: 'td' },
+            { text: prettyNumber(r.doubleRate) || '—', style: 'td' },
           ]),
         ],
       },
