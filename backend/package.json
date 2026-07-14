@@ -23,6 +23,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
+    "pdfmake": "^0.3.11",
     "zod": "^3.23.8"
   },
   "devDependencies": {

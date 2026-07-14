@@ -6,6 +6,8 @@ import { validate } from '../middleware/validate.js';
 
 import * as leadController from '../controllers/lead.controller.js';
 import * as activityController from '../controllers/leadActivity.controller.js';
+import * as kitController from '../controllers/kit.controller.js';
+import { createKitSchema } from '../validation/kit.validation.js';
 
 import {
   createLeadSchema,
@@ -98,6 +100,16 @@ router.post(
   '/:id/follow-ups/:fuId/close',
   validate(closeFollowUpSchema),
   activityController.closeFollowUp
+);
+
+/* --------------------------------- Kits -------------------------------- */
+
+router.get('/:id/kits', kitController.listForLead);
+
+router.post(
+  '/:id/kits',
+  validate(createKitSchema),
+  kitController.create
 );
 
 /* ------------------------------ Instructions --------------------------- */

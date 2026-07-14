@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, X, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -395,8 +395,14 @@ function LeadsListPage() {
                     className="cursor-pointer"
                     onClick={() => navigate(`/leads/${lead._id}`)}
                   >
-                    <TableCell className="font-mono text-xs font-medium text-foreground">
-                      {lead.reference || '—'}
+                    <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
+                      <Link
+                        to={`/leads/${lead._id}`}
+                        className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {lead.reference || '—'}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <div className="font-medium text-foreground">

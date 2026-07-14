@@ -118,10 +118,16 @@ function useChartColors() {
 
 function KpiCard({ icon: Icon, label, value, hint, accentToken = '--primary' }) {
   return (
-    <Card>
+    <Card className="relative overflow-hidden transition-shadow duration-200 hover:shadow-md">
+      {/* Accent edge to tie the metric to its status color. */}
+      <span
+        className="absolute inset-y-0 left-0 w-1"
+        style={{ backgroundColor: `hsl(var(${accentToken}) / 0.7)` }}
+        aria-hidden="true"
+      />
       <CardContent className="flex items-center gap-4 p-5">
         <div
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
           style={{
             backgroundColor: `hsl(var(${accentToken}) / 0.12)`,
             color: `hsl(var(${accentToken}))`,
@@ -131,7 +137,7 @@ function KpiCard({ icon: Icon, label, value, hint, accentToken = '--primary' }) 
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold tracking-tight text-foreground">
+          <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
             {value}
           </p>
           {hint ? (

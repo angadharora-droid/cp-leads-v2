@@ -22,6 +22,8 @@ import {
   MapPin,
   Building2,
   Save,
+  Package,
+  FileText,
 } from 'lucide-react';
 
 import api, { getErrorMessage } from '@/lib/api';
@@ -209,6 +211,8 @@ export default function LeadDetailPage() {
 
       {/* Everything on one page — overview first, then the activity sections. */}
       <OverviewTab lead={lead} />
+
+      <KitsSection lead={lead} />
 
       <SectionCard
         icon={ListChecks}
@@ -675,6 +679,121 @@ function OverviewTab({ lead }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kits (proposals, confirmation contracts, corporate rate agreements)         */
+/* -------------------------------------------------------------------------- */
+
+const KIT_STATUS_BADGE = {
+  draft: 'secondary',
+  sent: 'accent',
+  confirmed: 'default',
+};
+
+const KIT_TYPE_LABEL = {
+  event: 'Event Kit',
+  corporate: 'Corporate Rate Kit',
+};
+
+function KitsSection({ lead }) {
+  const [kits, setKits] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    api
+      .get(`/leads/${lead._id}/kits`)
+      .then((res) => {
+        if (active) setKits(res?.data?.data?.kits ?? []);
+      })
+      .catch((err) => {
+        toast.error(getErrorMessage(err, 'Failed to load kits'));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [lead._id]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <span>Kits &amp; Proposals</span>
+            <Count value={kits.length} />
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/leads/${lead._id}/kits/new?type=event`}>
+                <Plus className="h-4 w-4" />
+                Event Kit
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/leads/${lead._id}/kits/new?type=corporate`}>
+                <Plus className="h-4 w-4" />
+                Corporate Rate Kit
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : kits.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No kits yet"
+            description="Create an event kit (proposal + confirmation contract) or a corporate rate kit, generate the PDF, email it, and upload the signed confirmation."
+          />
+        ) : (
+          <div className="space-y-2">
+            {kits.map((kit) => {
+              const label =
+                kit.kitType === 'corporate'
+                  ? kit.corporate?.companyName || 'Corporate rate agreement'
+                  : kit.event?.guestName || 'Event proposal';
+              const fileCount = (kit.confirmationFiles || []).length;
+              return (
+                <Link
+                  key={kit._id}
+                  to={`/leads/${lead._id}/kits/${kit._id}`}
+                  className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40"
+                >
+                  <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {label}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {KIT_TYPE_LABEL[kit.kitType] || kit.kitType}
+                      {kit.contractNumber ? ` · Contract #${kit.contractNumber}` : ''}
+                      {' · '}updated {formatRelative(kit.updatedAt)}
+                      {fileCount > 0
+                        ? ` · ${fileCount} signed file${fileCount > 1 ? 's' : ''}`
+                        : ''}
+                    </p>
+                  </div>
+                  <Badge variant={KIT_STATUS_BADGE[kit.status] || 'secondary'}>
+                    {kit.status}
+                  </Badge>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

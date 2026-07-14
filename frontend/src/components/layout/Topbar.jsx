@@ -50,7 +50,8 @@ function Topbar({ onMenuClick }) {
         <Menu className="h-5 w-5" />
       </Button>
 
-      <div className="flex flex-col leading-tight">
+      {/* Brand (only when the sidebar is hidden) */}
+      <div className="flex flex-col leading-tight lg:hidden">
         <span className="text-sm font-semibold text-foreground sm:text-base">
           Centre Point Hospitality
         </span>
@@ -58,6 +59,16 @@ function Topbar({ onMenuClick }) {
           Leads CRM
         </span>
       </div>
+
+      {/* Today's date (desktop) — handy when scheduling follow-ups. */}
+      <p className="hidden text-sm text-muted-foreground lg:block">
+        {new Date().toLocaleDateString('en-IN', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })}
+      </p>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
         <ThemeToggle />

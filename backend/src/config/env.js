@@ -17,6 +17,15 @@ const env = {
   REFRESH_TOKEN_TTL_DAYS: num(process.env.REFRESH_TOKEN_TTL_DAYS, 7),
   BCRYPT_ROUNDS: num(process.env.BCRYPT_ROUNDS, 10),
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+
+  // SMTP settings for proposal emails. Email sending is disabled until these
+  // are configured (SMTP_HOST + SMTP_USER + SMTP_PASS at minimum).
+  SMTP_HOST: process.env.SMTP_HOST || '',
+  SMTP_PORT: num(process.env.SMTP_PORT, 587),
+  SMTP_SECURE: process.env.SMTP_SECURE === 'true',
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
+  MAIL_FROM: process.env.MAIL_FROM || '',
 };
 
 env.isProduction = env.NODE_ENV === 'production';

@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'sonner';
 
 import { AuthProvider } from '@/context/AuthContext';
-import { ThemeProvider } from '@/context/ThemeContext';
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 
@@ -10,6 +11,7 @@ import DashboardPage from '@/pages/DashboardPage';
 import LeadsListPage from '@/pages/LeadsListPage';
 import LeadFormPage from '@/pages/LeadFormPage';
 import LeadDetailPage from '@/pages/LeadDetailPage';
+import KitPage from '@/pages/KitPage';
 import FollowUpsPage from '@/pages/FollowUpsPage';
 import LeadTrackerPage from '@/pages/LeadTrackerPage';
 import UsersPage from '@/pages/UsersPage';
@@ -17,9 +19,24 @@ import AuditLogsPage from '@/pages/AuditLogsPage';
 import ChangePasswordPage from '@/pages/ChangePasswordPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 
+/** Sonner toaster that follows the app's light/dark theme. */
+function ThemedToaster() {
+  const { theme } = useTheme();
+  return (
+    <Toaster
+      richColors
+      closeButton
+      position="top-right"
+      theme={theme === 'dark' ? 'dark' : 'light'}
+      toastOptions={{ className: 'font-sans' }}
+    />
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
+      <ThemedToaster />
       <BrowserRouter
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
@@ -41,6 +58,8 @@ function App() {
               <Route path="/leads/new" element={<LeadFormPage />} />
               <Route path="/leads/:id" element={<LeadDetailPage />} />
               <Route path="/leads/:id/edit" element={<LeadFormPage />} />
+              <Route path="/leads/:id/kits/new" element={<KitPage />} />
+              <Route path="/leads/:id/kits/:kitId" element={<KitPage />} />
               <Route path="/follow-ups" element={<FollowUpsPage />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
 

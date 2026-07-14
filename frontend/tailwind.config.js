@@ -53,6 +53,7 @@ export default {
       },
       fontFamily: {
         sans: [
+          'Inter Variable',
           'Inter',
           'ui-sans-serif',
           'system-ui',
@@ -63,6 +64,11 @@ export default {
           'Arial',
           'sans-serif',
         ],
+      },
+      boxShadow: {
+        // Soft brand-tinted elevation for hero surfaces (login card, popovers).
+        elevated:
+          '0 1px 2px hsl(200 18% 14% / 0.05), 0 8px 24px -8px hsl(200 18% 14% / 0.12)',
       },
       keyframes: {
         'accordion-down': {

@@ -11,6 +11,7 @@ import { notFound, errorHandler } from './middleware/error.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import leadRoutes from './routes/lead.routes.js';
+import kitRoutes from './routes/kit.routes.js';
 import followUpRoutes from './routes/followup.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import auditRoutes from './routes/audit.routes.js';
@@ -39,6 +40,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leads', leadRoutes);
+app.use('/api/kits', kitRoutes);
 app.use('/api/follow-ups', followUpRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/audit', auditRoutes);

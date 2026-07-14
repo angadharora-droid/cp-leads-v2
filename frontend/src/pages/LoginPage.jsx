@@ -50,7 +50,7 @@ export default function LoginPage() {
   // While the AuthProvider is performing its silent refresh on mount, show a spinner.
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30">
+      <div className="flex min-h-dvh items-center justify-center bg-background">
         <Spinner size="lg" />
       </div>
     );
@@ -74,10 +74,21 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
+      {/* Soft brand glows behind the card. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+        style={{
+          background:
+            'radial-gradient(600px circle at 15% 20%, hsl(var(--primary) / 0.10), transparent 60%),' +
+            'radial-gradient(500px circle at 85% 80%, hsl(var(--accent) / 0.08), transparent 60%)',
+        }}
+      />
+
+      <div className="relative w-full max-w-md animate-slide-in">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/75 text-primary-foreground shadow-elevated">
             <Building2 className="h-7 w-7" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -88,7 +99,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <Card>
+        <Card className="shadow-elevated">
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <CardHeader>
               <CardTitle>Sign in</CardTitle>
