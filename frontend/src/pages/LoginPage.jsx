@@ -162,7 +162,7 @@ export default function LoginPage() {
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col gap-4">
+            <CardFooter>
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
@@ -173,11 +173,6 @@ export default function LoginPage() {
                   'Sign in'
                 )}
               </Button>
-
-              <div className="w-full rounded-md border border-dashed border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Demo admin:</span>{' '}
-                admin@cph.local / Admin@123
-              </div>
             </CardFooter>
           </form>
         </Card>
