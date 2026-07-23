@@ -21,7 +21,10 @@ export function refreshExpiryDate() {
 export function refreshCookieOptions() {
   return {
     httpOnly: true,
-    sameSite: 'lax',
+    // In production the SPA and API live on different origins, so the cookie
+    // must be SameSite=None (with Secure) to be sent at all. Browsers that
+    // block third-party cookies fall back to the refresh token in the body.
+    sameSite: env.isProduction ? 'none' : 'lax',
     secure: env.isProduction,
     path: '/api/auth',
     maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,

@@ -7,6 +7,9 @@ import {
 } from 'react';
 import api, {
   setAccessToken,
+  getStoredRefreshToken,
+  setStoredRefreshToken,
+  performRefresh,
   registerAuthFailureHandler,
 } from '@/lib/api';
 
@@ -41,17 +44,16 @@ let bootstrapPromise = null;
 function bootstrapAuth() {
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
-      if (!hasSessionHint()) return null;
+      // A stored refresh token or the cookie hint means a session may exist.
+      if (!hasSessionHint() && !getStoredRefreshToken()) return null;
       try {
-        const refreshRes = await api.post('/auth/refresh');
-        const token = refreshRes?.data?.data?.accessToken;
-        if (!token) throw new Error('No access token');
-        setAccessToken(token);
+        await performRefresh();
         const meRes = await api.get('/auth/me');
         return meRes?.data?.data?.user ?? null;
       } catch {
-        // No valid session (never logged in, or cookie expired) — stay logged out.
+        // No valid session (never logged in, or token expired) — stay logged out.
         setAccessToken(null);
+        setStoredRefreshToken(null);
         setSessionHint(false);
         return null;
       }
@@ -67,6 +69,7 @@ export function AuthProvider({ children }) {
   // Clear auth state (used by the global auth-failure handler and logout).
   const clearAuth = useCallback(() => {
     setAccessToken(null);
+    setStoredRefreshToken(null);
     setUser(null);
     setSessionHint(false);
   }, []);
@@ -95,8 +98,13 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    const { accessToken, user: loggedInUser } = res?.data?.data ?? {};
+    const {
+      accessToken,
+      refreshToken,
+      user: loggedInUser,
+    } = res?.data?.data ?? {};
     setAccessToken(accessToken ?? null);
+    setStoredRefreshToken(refreshToken ?? null);
     setUser(loggedInUser ?? null);
     setSessionHint(true);
     return loggedInUser ?? null;
@@ -104,7 +112,13 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.post('/auth/logout');
+      // Send the stored token too so the server can revoke the session even
+      // when the httpOnly cookie was blocked (cross-origin browsers).
+      const storedToken = getStoredRefreshToken();
+      await api.post(
+        '/auth/logout',
+        storedToken ? { refreshToken: storedToken } : {}
+      );
     } catch {
       /* ignore — clear local state regardless */
     } finally {

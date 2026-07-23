@@ -26,6 +26,34 @@ export function getAccessToken() {
   return accessToken;
 }
 
+// Persisted refresh token. The httpOnly cookie is the primary transport, but
+// when the SPA and API are on different origins many browsers (Safari,
+// incognito modes) refuse to send third-party cookies — so the token is also
+// kept in localStorage and sent in the request body as a fallback.
+const REFRESH_TOKEN_KEY = 'cph_refresh_token';
+
+/** @returns {string|null} the persisted refresh token, if any */
+export function getStoredRefreshToken() {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist the refresh token (or null to clear it).
+ * @param {string|null} token
+ */
+export function setStoredRefreshToken(token) {
+  try {
+    if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
+    else localStorage.removeItem(REFRESH_TOKEN_KEY);
+  } catch {
+    /* storage unavailable — cookie-based refresh still works where allowed */
+  }
+}
+
 // Handler invoked when authentication ultimately fails (refresh exhausted).
 let onAuthFailure = null;
 
@@ -53,15 +81,30 @@ function isAuthEndpoint(url = '') {
 // A single in-flight refresh promise so concurrent 401s share one refresh call.
 let refreshPromise = null;
 
-function performRefresh() {
+/**
+ * Rotate the session: exchanges the refresh token (cookie and/or stored copy)
+ * for a new access token, persisting the rotated refresh token. Shared by the
+ * 401 interceptor and the AuthProvider's silent restore on page load.
+ */
+export function performRefresh() {
   if (!refreshPromise) {
+    const storedToken = getStoredRefreshToken();
     refreshPromise = api
-      .post('/auth/refresh')
+      .post('/auth/refresh', storedToken ? { refreshToken: storedToken } : {})
       .then((res) => {
-        const newToken = res?.data?.data?.accessToken;
-        if (!newToken) throw new Error('No access token in refresh response');
-        setAccessToken(newToken);
-        return newToken;
+        const data = res?.data?.data ?? {};
+        if (!data.accessToken) {
+          throw new Error('No access token in refresh response');
+        }
+        setAccessToken(data.accessToken);
+        // Tokens rotate on every refresh — always persist the replacement.
+        if (data.refreshToken) setStoredRefreshToken(data.refreshToken);
+        return data.accessToken;
+      })
+      .catch((err) => {
+        // A failed refresh invalidates the stored token (rotation/reuse).
+        setStoredRefreshToken(null);
+        throw err;
       })
       .finally(() => {
         refreshPromise = null;

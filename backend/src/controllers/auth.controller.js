@@ -19,6 +19,17 @@ function clearRefreshCookie(res) {
   res.clearCookie(REFRESH_COOKIE_NAME, opts);
 }
 
+/**
+ * Resolve the raw refresh token: httpOnly cookie first, then a string
+ * `refreshToken` in the body (cross-origin clients that can't use cookies).
+ */
+function readRefreshToken(req) {
+  const cookieToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (cookieToken) return cookieToken;
+  const bodyToken = req.body?.refreshToken;
+  return typeof bodyToken === 'string' && bodyToken ? bodyToken : undefined;
+}
+
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const { user, accessToken, refreshToken } = await authService.login({
@@ -28,11 +39,13 @@ export const login = asyncHandler(async (req, res) => {
   });
 
   setRefreshCookie(res, refreshToken);
-  return sendOk(res, { user, accessToken });
+  // The refresh token is also returned in the body so cross-origin clients
+  // (where third-party cookies may be blocked) can store and resend it.
+  return sendOk(res, { user, accessToken, refreshToken });
 });
 
 export const refresh = asyncHandler(async (req, res) => {
-  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  const rawToken = readRefreshToken(req);
 
   try {
     const { accessToken, refreshToken } = await authService.refresh({
@@ -40,7 +53,7 @@ export const refresh = asyncHandler(async (req, res) => {
       req,
     });
     setRefreshCookie(res, refreshToken);
-    return sendOk(res, { accessToken });
+    return sendOk(res, { accessToken, refreshToken });
   } catch (err) {
     // Any refresh failure invalidates the session: clear the cookie.
     clearRefreshCookie(res);
@@ -49,7 +62,7 @@ export const refresh = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  const rawToken = readRefreshToken(req);
   await authService.logout({ refreshToken: rawToken, req });
   clearRefreshCookie(res);
   return sendOk(res, {});
