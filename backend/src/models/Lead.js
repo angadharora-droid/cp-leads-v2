@@ -76,7 +76,11 @@ const leadSchema = new Schema(
     email: { type: String, lowercase: true },
     city: { type: String },
     businessType: { type: String },
-    contactedFor: { type: String, enum: CONTACTED_FOR_OPTIONS },
+    contactedFor: {
+      type: [String],
+      enum: CONTACTED_FOR_OPTIONS,
+      default: [],
+    },
     leadDate: { type: Date, default: Date.now },
     status: {
       type: String,

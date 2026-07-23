@@ -57,6 +57,12 @@ function tokenFor(status) {
   return STATUS_TOKEN[status] || '--muted-foreground';
 }
 
+/** Normalize a lead's contactedFor (legacy single string or array) to an array. */
+function contactedUnits(lead) {
+  const value = lead.contactedFor;
+  return Array.isArray(value) ? value : value ? [value] : [];
+}
+
 /** Safely read a populated assignee's display name. */
 function assigneeName(assignedTo) {
   if (!assignedTo) return 'Unassigned';
@@ -111,9 +117,16 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
         <p className="line-clamp-2 text-sm font-medium text-foreground">
           {lead.businessName || 'Untitled lead'}
         </p>
-        {lead.contactedFor ? (
-          <span className="flex-shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            {lead.contactedFor}
+        {contactedUnits(lead).length > 0 ? (
+          <span className="flex flex-shrink-0 flex-wrap justify-end gap-1">
+            {contactedUnits(lead).map((unit) => (
+              <span
+                key={unit}
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"
+              >
+                {unit}
+              </span>
+            ))}
           </span>
         ) : null}
       </div>
@@ -411,7 +424,10 @@ function LeadTrackerPage() {
   const filteredLeads = useMemo(() => {
     const q = search.trim().toLowerCase();
     return leads.filter((lead) => {
-      if (contactedForFilter !== ALL && lead.contactedFor !== contactedForFilter) {
+      if (
+        contactedForFilter !== ALL &&
+        !contactedUnits(lead).includes(contactedForFilter)
+      ) {
         return false;
       }
       if (execFilter !== ALL) {

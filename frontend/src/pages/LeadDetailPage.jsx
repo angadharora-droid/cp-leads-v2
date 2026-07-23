@@ -638,7 +638,14 @@ function OverviewTab({ lead }) {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <Field label="Business name" value={lead.businessName} icon={Building2} />
             <Field label="Business type" value={lead.businessType} />
-            <Field label="Contacted for" value={lead.contactedFor} />
+            <Field
+              label="Contacted for"
+              value={
+                Array.isArray(lead.contactedFor)
+                  ? lead.contactedFor.join(', ')
+                  : lead.contactedFor
+              }
+            />
             <Field label="Contact person" value={lead.contactPerson} />
             <Field label="Designation" value={lead.designation} />
             <Field label="Mobile" value={lead.mobile} icon={Phone} />

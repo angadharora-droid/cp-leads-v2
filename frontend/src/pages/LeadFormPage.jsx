@@ -41,10 +41,15 @@ import {
 } from '@/components/ui/select';
 
 const UNASSIGNED = '__unassigned__';
-const NOT_SPECIFIED = '__none__';
 
 /** Centre Point business units a lead can be contacted for. */
 export const CONTACTED_FOR_OPTIONS = ['CPA', 'CPH', 'CPNM'];
+
+/** Normalize a lead's contactedFor (legacy single string or array) to an array. */
+export function toContactedForArray(value) {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  return list.filter((v) => CONTACTED_FOR_OPTIONS.includes(v));
+}
 
 // Optional email that also tolerates an empty string.
 const optionalEmail = z
@@ -59,7 +64,7 @@ const leadSchema = z.object({
   contactPerson: z.string().trim().optional(),
   designation: z.string().trim().optional(),
   businessType: z.string().trim().optional(),
-  contactedFor: z.enum(CONTACTED_FOR_OPTIONS).or(z.literal('')).optional(),
+  contactedFor: z.array(z.enum(CONTACTED_FOR_OPTIONS)).optional(),
   mobile: z.string().trim().optional(),
   email: optionalEmail,
   city: z.string().trim().optional(),
@@ -83,7 +88,7 @@ const EMPTY_DEFAULTS = {
   contactPerson: '',
   designation: '',
   businessType: '',
-  contactedFor: '',
+  contactedFor: [],
   mobile: '',
   email: '',
   city: '',
@@ -178,9 +183,7 @@ function LeadFormPage() {
           contactPerson: lead.contactPerson || '',
           designation: lead.designation || '',
           businessType: lead.businessType || '',
-          contactedFor: CONTACTED_FOR_OPTIONS.includes(lead.contactedFor)
-            ? lead.contactedFor
-            : '',
+          contactedFor: toContactedForArray(lead.contactedFor),
           mobile: lead.mobile || '',
           email: lead.email || '',
           city: lead.city || '',
@@ -346,33 +349,41 @@ function LeadFormPage() {
               />
             </Field>
 
-            <Field
-              label="Contacted for"
-              htmlFor="contactedFor"
-              error={errors.contactedFor}
-            >
+            <Field label="Contacted for" error={errors.contactedFor}>
               <Controller
                 control={control}
                 name="contactedFor"
                 render={({ field }) => (
-                  <Select
-                    value={field.value || NOT_SPECIFIED}
-                    onValueChange={(value) =>
-                      field.onChange(value === NOT_SPECIFIED ? '' : value)
-                    }
+                  <div
+                    role="group"
+                    aria-label="Contacted for"
+                    className="flex min-h-9 flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-input bg-transparent px-3 py-2 shadow-sm"
                   >
-                    <SelectTrigger id="contactedFor">
-                      <SelectValue placeholder="Select unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NOT_SPECIFIED}>Not specified</SelectItem>
-                      {CONTACTED_FOR_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
+                    {CONTACTED_FOR_OPTIONS.map((option) => {
+                      const selected = field.value || [];
+                      const checked = selected.includes(option);
+                      return (
+                        <label
+                          key={option}
+                          className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
+                            checked={checked}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.checked
+                                  ? [...selected, option]
+                                  : selected.filter((v) => v !== option)
+                              )
+                            }
+                          />
                           {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               />
             </Field>

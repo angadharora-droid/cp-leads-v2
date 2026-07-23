@@ -39,7 +39,7 @@ export const createLeadSchema = z.object({
   email: emailField,
   city: optionalText(120),
   businessType: optionalText(200),
-  contactedFor: z.enum(CONTACTED_FOR_OPTIONS).optional(),
+  contactedFor: z.array(z.enum(CONTACTED_FOR_OPTIONS)).optional(),
   status: z.enum(LEAD_STATUSES).optional(),
   assignedTo: objectId.optional(),
   // Optional sub-resources captured inline when the lead is first created.
@@ -63,7 +63,7 @@ export const updateLeadSchema = z
     email: emailField,
     city: optionalText(120),
     businessType: optionalText(200),
-    contactedFor: z.enum(CONTACTED_FOR_OPTIONS).optional(),
+    contactedFor: z.array(z.enum(CONTACTED_FOR_OPTIONS)).optional(),
     status: z.enum(LEAD_STATUSES).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
