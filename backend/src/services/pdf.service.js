@@ -10,6 +10,12 @@ pdfmake.setFonts({
     italics: 'Helvetica-Oblique',
     bolditalics: 'Helvetica-BoldOblique',
   },
+  Times: {
+    normal: 'Times-Roman',
+    bold: 'Times-Bold',
+    italics: 'Times-Italic',
+    bolditalics: 'Times-BoldItalic',
+  },
 });
 // Documents are built purely from our own data; block resource loading except
 // the standard PDF font names (which resolve through the local access policy).
@@ -18,6 +24,10 @@ const STANDARD_FONT_NAMES = new Set([
   'Helvetica-Bold',
   'Helvetica-Oblique',
   'Helvetica-BoldOblique',
+  'Times-Roman',
+  'Times-Bold',
+  'Times-Italic',
+  'Times-BoldItalic',
 ]);
 pdfmake.setUrlAccessPolicy(() => false);
 pdfmake.setLocalAccessPolicy((path) => STANDARD_FONT_NAMES.has(path));
@@ -80,12 +90,12 @@ function labelValueRows(pairs) {
   ]);
 }
 
-function docBase(content, footerLabel) {
+function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docStyles = styles } = {}) {
   return {
     pageSize: 'A4',
     pageMargins: [42, 92, 42, 52],
-    defaultStyle: { font: 'Helvetica', fontSize: 9 },
-    styles,
+    defaultStyle: { font, fontSize },
+    styles: docStyles,
     images: { cpLogo: CP_LOGO },
     header: () => ({
       stack: [
@@ -821,6 +831,22 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
 
 /* ------------------------ Corporate rate agreement ------------------------ */
 
+// The sample contract is a plain Word document: Times New Roman 12pt body,
+// black bold headings, black-bordered tables with no shading. These styles
+// mirror that look instead of the branded event-kit template.
+const CORPORATE_STYLES = {
+  th: { bold: true, alignment: 'center', fontSize: 11 },
+  td: { alignment: 'center', fontSize: 11 },
+  tdLeft: { fontSize: 11 },
+  para: { fontSize: 12 },
+  small: { fontSize: 10 },
+};
+
+/** Plain black bold heading, as in the Word contract. */
+function corpHeading(text, margin = [0, 10, 0, 3]) {
+  return { text, bold: true, fontSize: 12, margin };
+}
+
 // Meal plans offered on corporate contracts, in printed column order
 // (Continental Plan first, as on the sample contract).
 const RATE_PLANS = [
@@ -981,20 +1007,22 @@ const CORPORATE_SECTIONS = (d) => [
   },
 ];
 
-/** Two-column label/value fill-in table with a maroon title bar. */
+/** Bold heading + plain two-column label/value fill-in table, as in the Word contract. */
 function corporateDetailTable(title, rows, { margin = [0, 12, 0, 0] } = {}) {
   return {
-    table: {
-      widths: ['30%', '*'],
-      body: [
-        barRow(title, 2),
-        ...rows.map(([label, value]) => [
-          { text: label, style: 'tdLeft' },
-          { text: value || ' ', style: 'tdLeft' },
-        ]),
-      ],
-    },
-    layout: GRID,
+    stack: [
+      corpHeading(title, [0, 0, 0, 3]),
+      {
+        table: {
+          widths: ['30%', '*'],
+          body: rows.map(([label, value]) => [
+            { text: label, style: 'tdLeft' },
+            { text: value || ' ', style: 'tdLeft' },
+          ]),
+        },
+        layout: GRID,
+      },
+    ],
     margin,
     unbreakable: true,
   };
@@ -1003,27 +1031,22 @@ function corporateDetailTable(title, rows, { margin = [0, 12, 0, 0] } = {}) {
 /** Hotel + client point-of-contact tables, as on the sample contract. */
 function corporateContactsSection() {
   const th = (text) => ({ text, style: 'th' });
-  const td = (text = '') => ({ text: text || ' ', style: 'td', fontSize: 8 });
+  const td = (text = '') => ({ text: text || ' ', style: 'td', fontSize: 9 });
+  const groupRow = (text) => [{ text, style: 'th', colSpan: 5 }, {}, {}, {}, {}];
   const header = () => [th('Department'), th('Name'), th('Designation'), th('Mobile'), th('Email')];
   return [
-    {
-      text: 'POINT OF CONTACTS',
-      bold: true,
-      color: MAROON,
-      fontSize: 10,
-      margin: [0, 12, 0, 3],
-    },
+    corpHeading('POINT OF CONTACTS', [0, 12, 0, 3]),
     {
       table: {
         widths: ['17%', '17%', '17%', '14%', '*'],
         body: [
-          barRow('Hotel', 5),
+          groupRow('Hotel'),
           header(),
           [td('Sales'), td('Shabir Hussain'), td('Head of Sales'), td('9763715978'), td('sales.nm@cpgh.in')],
           [td(), td('Mohnish Ramtekkar'), td('Sales Manager'), td('8805598616'), td('sales2.nagpur@cpgh.in')],
           [td('Finance (NAGPUR)'), td('Sushil Wasnik'), td('Accounts Receivable'), td('0712-6699168'), td('accounts@centrepointnagpur.com')],
           [td('Finance (NAVI MUMBAI)'), td('Ganesh Kosekar'), td('Accounts Manager'), td('9011036267'), td('account.navimumbai@cpgh.in')],
-          barRow('Client', 5),
+          groupRow('Client'),
           header(),
           [td('Admin *'), td(), td(), td(), td()],
           [td('Admin * Escalation 1'), td(), td(), td(), td()],
@@ -1081,23 +1104,26 @@ function corporateAcceptanceSections() {
   const cell = (text = ' ') => ({ text, style: 'tdLeft', margin: [0, 9, 0, 9] });
   return [
     {
-      table: {
-        widths: ['22%', '38%', '*'],
-        body: [
-          barRow('Acceptance', 3),
-          [cell('Name : *'), cell(), { text: 'Company Stamp *', style: 'tdLeft', rowSpan: 4 }],
-          [cell('Designation : *'), cell(), {}],
-          [cell('Date : *'), cell(), {}],
-          [cell('Place : *'), cell(), {}],
-        ],
-      },
-      layout: GRID,
-      margin: [0, 12, 0, 0],
+      stack: [
+        corpHeading('Acceptance', [0, 12, 0, 3]),
+        {
+          table: {
+            widths: ['22%', '38%', '*'],
+            body: [
+              [cell('Name : *'), cell(), { text: 'Company Stamp *', style: 'tdLeft', rowSpan: 4 }],
+              [cell('Designation : *'), cell(), {}],
+              [cell('Date : *'), cell(), {}],
+              [cell('Place : *'), cell(), {}],
+            ],
+          },
+          layout: GRID,
+        },
+      ],
       unbreakable: true,
     },
     {
       stack: [
-        { text: 'Yours Sincerely,', fontSize: 9, margin: [0, 20, 0, 14] },
+        { text: 'Yours Sincerely,', margin: [0, 20, 0, 14] },
         {
           columns: [
             {
@@ -1107,7 +1133,6 @@ function corporateAcceptanceSections() {
                 'sales2.nagpur@cpgh.in',
                 '8805598616',
               ],
-              fontSize: 9,
             },
             {
               stack: [
@@ -1116,9 +1141,9 @@ function corporateAcceptanceSections() {
                 'sales.nm@cpgh.in',
                 '9763715978',
               ],
-              fontSize: 9,
             },
           ],
+          fontSize: 12,
         },
       ],
       unbreakable: true,
@@ -1131,20 +1156,14 @@ function creditApplicationSections() {
   const label = (text, extra = {}) => ({ text, style: 'tdLeft', ...extra });
   const fill = (extra = {}) => ({ text: ' ', style: 'tdLeft', ...extra });
   const chk = (text) => ({ text: `[   ]  ${text}`, style: 'tdLeft', margin: [0, 1, 0, 1] });
-  const heading = (text) => ({
-    text,
-    bold: true,
-    color: MAROON,
-    fontSize: 10,
-    margin: [0, 12, 0, 3],
-  });
+  const heading = (text) => corpHeading(text, [0, 12, 0, 3]);
+  const tableGroupRow = (text) => [{ text, style: 'th', colSpan: 3 }, {}, {}];
 
   return [
     {
       text: 'Corporate Credit Application Form',
       bold: true,
-      color: MAROON,
-      fontSize: 11,
+      fontSize: 13,
       alignment: 'center',
       pageBreak: 'before',
       margin: [0, 0, 0, 2],
@@ -1172,7 +1191,7 @@ function creditApplicationSections() {
           [label('Email/Website *'), fill({ colSpan: 2 }), {}],
           [label('Contact Person *', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('Name'), fill()],
           [{}, label('Contact Number'), fill()],
-          barRow('Billing Details (Kindly ignore if same as above)', 3),
+          tableGroupRow('Billing Details (Kindly ignore if same as above)'),
           [label('Billing Name *'), fill({ colSpan: 2 }), {}],
           [label('Billing Address *'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
           [fill(), label('City:'), label('State:')],
@@ -1185,7 +1204,7 @@ function creditApplicationSections() {
       },
       layout: GRID,
     },
-    heading('CREDIT APPLICATION LIMIT:'),
+    heading('Credit Application Limit'),
     {
       table: {
         widths: ['30%', '35%', '*'],
@@ -1201,7 +1220,7 @@ function creditApplicationSections() {
           ],
           [label('Details if ticked on Others'), fill({ colSpan: 2 }), {}],
           [label('Credit Period'), label('15 Days', { colSpan: 2 }), {}],
-          barRow('Credit Card Information', 3),
+          tableGroupRow('Credit Card Information'),
           [label('Credit Card Name/Issuing Bank'), fill({ colSpan: 2 }), {}],
           [label('Written Holder’s Name'), fill({ colSpan: 2 }), {}],
           [label('Card Number'), fill({ colSpan: 2 }), {}],
@@ -1271,22 +1290,21 @@ function creditApplicationSections() {
             { text: 'Designation :', margin: [0, 0, 0, 14] },
             { text: 'Company Stamp :' },
           ],
-          fontSize: 9,
         },
         {
           stack: [
             { text: 'Place :', margin: [0, 0, 0, 14] },
             { text: 'Date :' },
           ],
-          fontSize: 9,
         },
       ],
+      fontSize: 12,
       margin: [0, 16, 0, 0],
       unbreakable: true,
     },
     {
       stack: [
-        sectionBar('FOR INTERNAL USE ONLY', [0, 18, 0, 0]),
+        corpHeading('FOR INTERNAL USE ONLY', [0, 18, 0, 3]),
         {
           table: {
             widths: ['40%', '*'],
@@ -1307,7 +1325,6 @@ function creditApplicationSections() {
                 'sales2.nagpur@cpgh.in',
                 '8805598616',
               ],
-              fontSize: 9,
             },
             {
               stack: [
@@ -1316,16 +1333,17 @@ function creditApplicationSections() {
                 'sales.nm@cpgh.in',
                 '9763715978',
               ],
-              fontSize: 9,
             },
           ],
+          fontSize: 12,
           margin: [0, 16, 0, 0],
         },
         {
           columns: [
-            { text: 'Credit Manager/ Asst. Accounts Manager', fontSize: 9, bold: true },
-            { text: 'Financial Controller/ CFO', fontSize: 9, bold: true },
+            { text: 'Credit Manager/ Asst. Accounts Manager', bold: true },
+            { text: 'Financial Controller/ CFO', bold: true },
           ],
+          fontSize: 12,
           margin: [0, 26, 0, 0],
         },
       ],
@@ -1343,24 +1361,23 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
     new Date(kit.createdAt ? kit.createdAt : Date.now()).toLocaleDateString('en-GB');
 
   const content = [
-    { text: `Date – ${docDate}`, fontSize: 9, margin: [0, 0, 0, 8] },
+    { text: `Date – ${docDate}`, margin: [0, 0, 0, 8] },
     {
       stack: [
-        { text: 'To,', fontSize: 9 },
+        { text: 'To,' },
         {
           text: [d.contactPerson, d.companyName].filter(Boolean).join(' ') || ' ',
-          fontSize: 9,
           bold: true,
         },
-        { text: `Phone – ${d.mobile || ''}`, fontSize: 9 },
-        { text: `Email.Id:- ${d.email || ''}`, fontSize: 9 },
-        { text: `Address:- ${d.address || ''}`, fontSize: 9 },
-        { text: `GST Number: ${d.gstNumber || ''}`, fontSize: 9 },
+        { text: `Phone – ${d.mobile || ''}` },
+        { text: `Email.Id:- ${d.email || ''}` },
+        { text: `Address:- ${d.address || ''}` },
+        { text: `GST Number: ${d.gstNumber || ''}` },
       ],
       margin: [0, 0, 0, 10],
     },
-    { text: 'Dear Sir,', fontSize: 9, margin: [0, 0, 0, 6] },
-    { text: 'Greetings from Centre Point Hotels & Resort', fontSize: 9, margin: [0, 0, 0, 6] },
+    { text: 'Dear Sir,', margin: [0, 0, 0, 6] },
+    { text: 'Greetings from Centre Point Hotels & Resort', margin: [0, 0, 0, 6] },
     {
       text: 'It gives me immense pleasure to inform you that we have customize a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
       style: 'para',
@@ -1380,14 +1397,13 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
     if (!hasContent) continue;
 
     const rateColWidth = `${(62 / (plans.length * 2)).toFixed(2)}%`;
+    content.push(
+      corpHeading(`Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`)
+    );
     content.push({
       table: {
         widths: ['*', '13%', ...plans.flatMap(() => [rateColWidth, rateColWidth])],
         body: [
-          barRow(
-            `Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`,
-            2 + plans.length * 2
-          ),
           [
             { text: 'Room Category', style: 'th', rowSpan: 2, margin: [0, 7, 0, 0] },
             { text: 'Room Size', style: 'th', rowSpan: 2, margin: [0, 7, 0, 0] },
@@ -1415,7 +1431,6 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
         ],
       },
       layout: GRID,
-      margin: [0, 10, 0, 0],
       unbreakable: true,
     });
   }
@@ -1425,8 +1440,8 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       content.push({ text: section.note, style: 'para', bold: true, margin: [0, 10, 0, 0] });
       continue;
     }
-    content.push({ text: section.title, bold: true, color: MAROON, fontSize: 10, margin: [0, 10, 0, 3] });
-    if (section.bullets) content.push({ ul: section.bullets, style: 'tdLeft' });
+    content.push(corpHeading(section.title));
+    if (section.bullets) content.push({ ul: section.bullets, style: 'para' });
     for (const para of section.paras || []) {
       content.push({ text: para, style: 'para', margin: [0, 2, 0, 2] });
     }
@@ -1437,7 +1452,7 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   }
 
   content.push(
-    corporateDetailTable('Company Details', [
+    corporateDetailTable('Company Details:', [
       ['Company Name', d.companyName],
       ['GST No', d.gstNumber],
       ['PAN No', d.panNumber],
@@ -1454,7 +1469,11 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   );
 
   return renderToBuffer(
-    docBase(content, `Corporate Rate Agreement_ ${d.companyName || ''}`)
+    docBase(content, `Corporate Rate Agreement_ ${d.companyName || ''}`, {
+      font: 'Times',
+      fontSize: 12,
+      docStyles: CORPORATE_STYLES,
+    })
   );
 }
 
