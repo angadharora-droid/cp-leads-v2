@@ -111,12 +111,65 @@ const EMPTY_REQUIREMENT_ROW = {
 
 const EMPTY_OTHER_RATE_ROW = { category: '', rate: '' };
 
+/** Meal plans offered on corporate rate contracts. Order here is the column
+    order on the printed agreement (Continental Plan first, as on the sample). */
+const RATE_PLANS = [
+  { code: 'CP', label: 'Continental Plan' },
+  { code: 'MAP', label: 'Modified American Plan' },
+  { code: 'AP', label: 'American Plan' },
+  { code: 'EP', label: 'European Plan' },
+];
+
 const EMPTY_CORPORATE_RATE_ROW = {
   category: '',
   size: '',
-  singleRate: '',
-  doubleRate: '',
+  cpSingle: '',
+  cpDouble: '',
+  mapSingle: '',
+  mapDouble: '',
+  apSingle: '',
+  apDouble: '',
+  epSingle: '',
+  epDouble: '',
 };
+
+/** Room categories per property, from the hotels' websites
+    (centrepointnagpur.com, centrepointnavimumbai.com, centrepointamravati.com).
+    Sizes are blank where the site doesn't publish one. */
+const PROPERTY_ROOM_OPTIONS = {
+  nagpur: [
+    { category: 'Executive', size: '278 sq.ft' },
+    { category: 'Premium', size: '312 sq.ft' },
+    { category: 'Club', size: '402 sq.ft' },
+    { category: 'Super Club', size: '' },
+    { category: 'Deluxe Suite', size: '' },
+    { category: 'CP Suite', size: '' },
+  ],
+  naviMumbai: [
+    { category: 'Premium Twin Bedroom', size: '305 sq.ft' },
+    { category: 'Club Master Bedroom', size: '255 sq.ft' },
+  ],
+  amravati: [
+    { category: 'Executive Room', size: '180 sq.ft' },
+    { category: 'Premium Room', size: '250 sq.ft' },
+    { category: 'Family Premium', size: '325 sq.ft' },
+    { category: 'Club Room', size: '400 sq.ft' },
+    { category: 'Deluxe Suite', size: '600 sq.ft' },
+    { category: 'Luxury Suite', size: '800 sq.ft' },
+  ],
+};
+
+function roomOptionsForProperty(propertyName) {
+  const name = (propertyName || '').toLowerCase();
+  if (name.includes('navi mumbai')) return PROPERTY_ROOM_OPTIONS.naviMumbai;
+  if (name.includes('amravati')) return PROPERTY_ROOM_OPTIONS.amravati;
+  if (name.includes('nagpur')) return PROPERTY_ROOM_OPTIONS.nagpur;
+  return [
+    ...PROPERTY_ROOM_OPTIONS.nagpur,
+    ...PROPERTY_ROOM_OPTIONS.naviMumbai,
+    ...PROPERTY_ROOM_OPTIONS.amravati,
+  ];
+}
 
 function defaultEventDetails(lead) {
   return {
@@ -160,26 +213,49 @@ function defaultCorporateDetails(lead) {
     email: lead?.email || '',
     gstNumber: '',
     panNumber: '',
+    accountPersonName: '',
+    accountPersonNumber: '',
+    billingAddress: '',
     properties: [
       {
         propertyName: 'Hotel Centre Point, Nagpur',
+        plans: ['CP'],
         rows: [
-          { category: 'Executive', size: '278 sq.ft', singleRate: '', doubleRate: '' },
-          { category: 'Premium', size: '312 sq.ft', singleRate: '', doubleRate: '' },
-          { category: 'Club', size: '402 sq.ft', singleRate: '', doubleRate: '' },
+          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Executive', size: '278 sq.ft' },
+          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Premium', size: '312 sq.ft' },
+          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Club', size: '402 sq.ft' },
         ],
       },
       {
         propertyName: 'Hotel Centre Point, Navi Mumbai',
+        plans: ['CP'],
         rows: [
-          { category: 'Premium Room', size: '275 sq.ft', singleRate: '', doubleRate: '' },
-          { category: 'Club Room', size: '325 sq.ft', singleRate: '', doubleRate: '' },
+          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Premium Twin Bedroom', size: '305 sq.ft' },
+          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Club Master Bedroom', size: '255 sq.ft' },
         ],
       },
     ],
     validUntil: '',
     extraBedRate: 'INR 1500 plus taxes',
     notes: '',
+  };
+}
+
+/** Kits saved before rate plans existed hold singleRate/doubleRate per row —
+    those were Continental Plan rates, so fold them into the CP columns. */
+function normalizeCorporateDetails(details) {
+  return {
+    ...details,
+    properties: (details.properties || []).map((property) => ({
+      ...property,
+      plans: property.plans?.length ? property.plans : ['CP'],
+      rows: (property.rows || []).map(({ singleRate, doubleRate, ...row }) => ({
+        ...EMPTY_CORPORATE_RATE_ROW,
+        ...row,
+        cpSingle: row.cpSingle || singleRate || '',
+        cpDouble: row.cpDouble || doubleRate || '',
+      })),
+    })),
   };
 }
 
@@ -360,8 +436,10 @@ function LinesField({ label, hint, values, onChange, rows = 5 }) {
  * Scrolls horizontally on narrow screens.
  */
 function RowsEditor({ title, description, columns, rows, onRowsChange, emptyRow, addLabel }) {
-  function updateCell(idx, key, value) {
-    const next = rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r));
+  function updateCell(idx, col, value) {
+    // A column may auto-fill sibling cells (e.g. picking a room category fills its size).
+    const patch = { [col.key]: value, ...(col.fill ? col.fill(value) : {}) };
+    const next = rows.map((r, i) => (i === idx ? { ...r, ...patch } : r));
     onRowsChange(next);
   }
   function addRow() {
@@ -420,14 +498,38 @@ function RowsEditor({ title, description, columns, rows, onRowsChange, emptyRow,
                   </td>
                   {columns.map((col) => (
                     <td key={col.key} className="p-1">
-                      <SmartInput
-                        type={col.type}
-                        className="h-9 rounded-md border-transparent bg-transparent px-2 shadow-none hover:border-input focus-visible:border-ring focus-visible:bg-background"
-                        value={row[col.key] ?? ''}
-                        onChange={(value) => updateCell(idx, col.key, value)}
-                        placeholder={col.placeholder}
-                        aria-label={`${title} — row ${idx + 1} — ${col.label}`}
-                      />
+                      {col.options ? (
+                        <Select
+                          value={row[col.key] || ''}
+                          onValueChange={(value) => updateCell(idx, col, value)}
+                        >
+                          <SelectTrigger
+                            className="h-9 rounded-md border-transparent bg-transparent px-2 shadow-none hover:border-input focus:border-ring"
+                            aria-label={`${title} — row ${idx + 1} — ${col.label}`}
+                          >
+                            <SelectValue placeholder={col.placeholder} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(row[col.key] && !col.options.includes(row[col.key])
+                              ? [row[col.key], ...col.options]
+                              : col.options
+                            ).map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <SmartInput
+                          type={col.type}
+                          className="h-9 rounded-md border-transparent bg-transparent px-2 shadow-none hover:border-input focus-visible:border-ring focus-visible:bg-background"
+                          value={row[col.key] ?? ''}
+                          onChange={(value) => updateCell(idx, col, value)}
+                          placeholder={col.placeholder}
+                          aria-label={`${title} — row ${idx + 1} — ${col.label}`}
+                        />
+                      )}
                     </td>
                   ))}
                   <td className="px-1 text-center">
@@ -512,7 +614,10 @@ export default function KitPage() {
         setForm(
           kitData.kitType === 'event'
             ? { ...defaultEventDetails(null), ...(kitData.event || {}) }
-            : { ...defaultCorporateDetails(null), ...(kitData.corporate || {}) }
+            : normalizeCorporateDetails({
+                ...defaultCorporateDetails(null),
+                ...(kitData.corporate || {}),
+              })
         );
       } else {
         setForm(
@@ -977,6 +1082,17 @@ function CorporateKitForm({ form, update }) {
             value={form.panNumber}
             onChange={(v) => update('panNumber', v)}
           />
+          <TextField
+            label="Account Person Name"
+            value={form.accountPersonName}
+            onChange={(v) => update('accountPersonName', v)}
+          />
+          <TextField
+            label="Account Person Number"
+            type="tel"
+            value={form.accountPersonNumber}
+            onChange={(v) => update('accountPersonNumber', v)}
+          />
           <div className="sm:col-span-2 lg:col-span-3">
             <TextField
               label="Address"
@@ -985,40 +1101,109 @@ function CorporateKitForm({ form, update }) {
               placeholder="Full company address"
             />
           </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <TextField
+              label="Billing Address (if different)"
+              value={form.billingAddress}
+              onChange={(v) => update('billingAddress', v)}
+            />
+          </div>
         </CardContent>
       </Card>
 
-      {(form.properties || []).map((property, idx) => (
-        <Card key={idx}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              Corporate Rates — Property {idx + 1}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <TextField
-              label="Property Name"
-              value={property.propertyName}
-              onChange={(v) => updateProperty(idx, { propertyName: v })}
-              placeholder="Hotel Centre Point, Nagpur"
-            />
-            <RowsEditor
-              title="Room rates (INR, Continental Plan)"
-              columns={[
-                { key: 'category', label: 'Room category', placeholder: 'Executive' },
-                { key: 'size', label: 'Room size', placeholder: '278 sq.ft' },
-                { key: 'singleRate', label: 'Single rate (INR)', type: 'number', placeholder: '4000' },
-                { key: 'doubleRate', label: 'Double rate (INR)', type: 'number', placeholder: '5000' },
-              ]}
-              rows={property.rows}
-              onRowsChange={(rows) => updateProperty(idx, { rows })}
-              emptyRow={EMPTY_CORPORATE_RATE_ROW}
-              addLabel="Add rate row"
-            />
-          </CardContent>
-        </Card>
-      ))}
+      {(form.properties || []).map((property, idx) => {
+        const roomOptions = roomOptionsForProperty(property.propertyName);
+        const selectedPlans = property.plans?.length ? property.plans : ['CP'];
+        const rateColumns = RATE_PLANS.filter((p) => selectedPlans.includes(p.code)).flatMap(
+          (p) => [
+            {
+              key: `${p.code.toLowerCase()}Single`,
+              label: `${p.code} Single (INR)`,
+              type: 'number',
+              placeholder: '4500',
+            },
+            {
+              key: `${p.code.toLowerCase()}Double`,
+              label: `${p.code} Double (INR)`,
+              type: 'number',
+              placeholder: '5500',
+            },
+          ]
+        );
+        return (
+          <Card key={idx}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                Corporate Rates — Property {idx + 1}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <TextField
+                label="Property Name"
+                value={property.propertyName}
+                onChange={(v) => updateProperty(idx, { propertyName: v })}
+                placeholder="Hotel Centre Point, Nagpur"
+              />
+              <div className="space-y-1.5">
+                <Label className="text-xs">
+                  Rate Plans — each ticked plan adds Single &amp; Double rate columns
+                </Label>
+                <div
+                  role="group"
+                  aria-label={`Rate plans — property ${idx + 1}`}
+                  className="flex min-h-9 flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-input bg-transparent px-3 py-2 shadow-sm"
+                >
+                  {RATE_PLANS.map((plan) => (
+                    <label
+                      key={plan.code}
+                      className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
+                        checked={selectedPlans.includes(plan.code)}
+                        onChange={(e) => {
+                          const next = RATE_PLANS.map((p) => p.code).filter((code) =>
+                            code === plan.code
+                              ? e.target.checked
+                              : selectedPlans.includes(code)
+                          );
+                          if (!next.length) return; // keep at least one plan
+                          updateProperty(idx, { plans: next });
+                        }}
+                      />
+                      {plan.label} ({plan.code})
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <RowsEditor
+                title="Room rates (INR)"
+                columns={[
+                  {
+                    key: 'category',
+                    label: 'Room category',
+                    placeholder: 'Select category',
+                    width: 170,
+                    options: roomOptions.map((o) => o.category),
+                    fill: (value) => {
+                      const option = roomOptions.find((o) => o.category === value);
+                      return option?.size ? { size: option.size } : {};
+                    },
+                  },
+                  { key: 'size', label: 'Room size', placeholder: '278 sq.ft' },
+                  ...rateColumns,
+                ]}
+                rows={property.rows}
+                onRowsChange={(rows) => updateProperty(idx, { rows })}
+                emptyRow={EMPTY_CORPORATE_RATE_ROW}
+                addLabel="Add rate row"
+              />
+            </CardContent>
+          </Card>
+        );
+      })}
       <Button
         type="button"
         variant="outline"
@@ -1026,7 +1211,7 @@ function CorporateKitForm({ form, update }) {
         onClick={() =>
           update('properties', [
             ...(form.properties || []),
-            { propertyName: '', rows: [{ ...EMPTY_CORPORATE_RATE_ROW }] },
+            { propertyName: '', plans: ['CP'], rows: [{ ...EMPTY_CORPORATE_RATE_ROW }] },
           ])
         }
       >

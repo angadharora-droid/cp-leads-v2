@@ -81,12 +81,30 @@ const eventDetailsSchema = new Schema(
 
 /* ------------------------- Corporate kit details ------------------------- */
 
+export const RATE_PLANS = [
+  { code: 'CP', label: 'Continental Plan' },
+  { code: 'MAP', label: 'Modified American Plan' },
+  { code: 'AP', label: 'American Plan' },
+  { code: 'EP', label: 'European Plan' },
+];
+export const RATE_PLAN_CODES = RATE_PLANS.map((p) => p.code);
+
 const corporateRateRowSchema = new Schema(
   {
     category: { type: String, default: '' },
     size: { type: String, default: '' },
+    // Legacy columns from before rate plans existed — read as Continental
+    // Plan rates for kits saved by older versions.
     singleRate: { type: String, default: '' },
     doubleRate: { type: String, default: '' },
+    cpSingle: { type: String, default: '' },
+    cpDouble: { type: String, default: '' },
+    mapSingle: { type: String, default: '' },
+    mapDouble: { type: String, default: '' },
+    apSingle: { type: String, default: '' },
+    apDouble: { type: String, default: '' },
+    epSingle: { type: String, default: '' },
+    epDouble: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -94,6 +112,7 @@ const corporateRateRowSchema = new Schema(
 const corporatePropertySchema = new Schema(
   {
     propertyName: { type: String, default: '' },
+    plans: { type: [String], enum: RATE_PLAN_CODES, default: ['CP'] },
     rows: { type: [corporateRateRowSchema], default: [] },
   },
   { _id: false }
@@ -108,6 +127,9 @@ const corporateDetailsSchema = new Schema(
     email: { type: String, default: '' },
     gstNumber: { type: String, default: '' },
     panNumber: { type: String, default: '' },
+    accountPersonName: { type: String, default: '' },
+    accountPersonNumber: { type: String, default: '' },
+    billingAddress: { type: String, default: '' },
     properties: { type: [corporatePropertySchema], default: [] },
     validUntil: { type: String, default: '' },
     extraBedRate: { type: String, default: 'INR 1500 plus taxes' },

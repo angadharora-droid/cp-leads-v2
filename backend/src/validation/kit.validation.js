@@ -65,10 +65,19 @@ const corporateRateRowSchema = z.object({
   size: str,
   singleRate: str,
   doubleRate: str,
+  cpSingle: str,
+  cpDouble: str,
+  mapSingle: str,
+  mapDouble: str,
+  apSingle: str,
+  apDouble: str,
+  epSingle: str,
+  epDouble: str,
 });
 
 const corporatePropertySchema = z.object({
   propertyName: str,
+  plans: z.array(z.enum(['CP', 'MAP', 'AP', 'EP'])).max(4).default(['CP']),
   rows: z.array(corporateRateRowSchema).max(20).default([]),
 });
 
@@ -80,6 +89,9 @@ export const corporateDetailsSchema = z.object({
   email: str,
   gstNumber: str,
   panNumber: str,
+  accountPersonName: str,
+  accountPersonNumber: str,
+  billingAddress: str,
   properties: z.array(corporatePropertySchema).max(10).default([]),
   validUntil: str,
   extraBedRate: str,

@@ -821,6 +821,23 @@ export async function buildEventPdf(kit, docType, { dateLabel } = {}) {
 
 /* ------------------------ Corporate rate agreement ------------------------ */
 
+// Meal plans offered on corporate contracts, in printed column order
+// (Continental Plan first, as on the sample contract).
+const RATE_PLANS = [
+  { code: 'CP', label: 'Continental Plan' },
+  { code: 'MAP', label: 'Modified American Plan' },
+  { code: 'AP', label: 'American Plan' },
+  { code: 'EP', label: 'European Plan' },
+];
+
+/** Rate for a plan column; legacy kits stored CP rates as singleRate/doubleRate. */
+function planRate(row, code, side) {
+  const value = row[`${code.toLowerCase()}${side}`];
+  if (value) return value;
+  if (code === 'CP') return (side === 'Single' ? row.singleRate : row.doubleRate) || '';
+  return '';
+}
+
 const CORPORATE_SECTIONS = (d) => [
   {
     title: 'RATES IN THIS AGREEMENT ARE:',
@@ -911,6 +928,12 @@ const CORPORATE_SECTIONS = (d) => [
     ],
   },
   {
+    note:
+      'NOTE: THESE ABOVE CORPORATE RATES WILL NOT BE APPLICABLE IN CASE OF CITY BIG EVENTS, HIGH DEMAND DATES, NATIONAL CONFERENCES IN CITY AND ON ASSEMBLY DATES.\n' +
+      'ABOVE ROOM RATES ARE APPLICABLE FOR UPTO 06 ROOMS ONLY (NOT FOR GROUP BOOKING).\n' +
+      'Category of rooms like Twin / King / Smoking / Non-Smoking will be subject to availability and as per the category booked.',
+  },
+  {
     title: 'CREDIT FACILITIES:',
     bullets: [
       'All bills to be settled by cash / credit card at the time of checkout unless credit is approved by the hotel with a written communication between both the client and the hotel with a Credit Application Form duly stamped and signed by the company, and credit agreed mutually on said terms for amount and period. At any point of time the hotel has the right to stop credit in case of overdue as per the said limit and time.',
@@ -956,6 +979,355 @@ const CORPORATE_SECTIONS = (d) => [
   },
 ];
 
+/** Two-column label/value fill-in table with a maroon title bar. */
+function corporateDetailTable(title, rows, { margin = [0, 12, 0, 0] } = {}) {
+  return {
+    table: {
+      widths: ['30%', '*'],
+      body: [
+        barRow(title, 2),
+        ...rows.map(([label, value]) => [
+          { text: label, style: 'tdLeft' },
+          { text: value || ' ', style: 'tdLeft' },
+        ]),
+      ],
+    },
+    layout: GRID,
+    margin,
+    unbreakable: true,
+  };
+}
+
+/** Hotel + client point-of-contact tables, as on the sample contract. */
+function corporateContactsSection() {
+  const th = (text) => ({ text, style: 'th' });
+  const td = (text = '') => ({ text: text || ' ', style: 'td', fontSize: 8 });
+  const header = () => [th('Department'), th('Name'), th('Designation'), th('Mobile'), th('Email')];
+  return [
+    {
+      table: {
+        widths: ['17%', '17%', '17%', '14%', '*'],
+        body: [
+          barRow('POINT OF CONTACTS — Hotel', 5),
+          header(),
+          [td('Sales'), td('Shabir Hussain'), td('Head of Sales'), td('9763715978'), td('sales.nm@cpgh.in')],
+          [td('Sales'), td('Mohnish Ramtekkar'), td('Sales Manager'), td('8805598616'), td('sales2.nagpur@cpgh.in')],
+          [td('Finance (Nagpur)'), td('Sushil Wasnik'), td('Accounts Receivable'), td('0712-6699168'), td('accounts@centrepointnagpur.com')],
+          [td('Finance (Navi Mumbai)'), td('Ganesh Kosekar'), td('Accounts Manager'), td('9011036267'), td('account.navimumbai@cpgh.in')],
+          barRow('POINT OF CONTACTS — Client', 5),
+          header(),
+          [td('Admin *'), td(), td(), td(), td()],
+          [td('Admin * — Escalation 1'), td(), td(), td(), td()],
+          [td('Finance *'), td(), td(), td(), td()],
+          [td('Finance * — Escalation 1'), td(), td(), td(), td()],
+        ],
+      },
+      layout: GRID,
+      margin: [0, 12, 0, 0],
+      unbreakable: true,
+    },
+    {
+      text: 'Note: The fields marked as * are mandatory without which the contract is incomplete.',
+      style: 'small',
+      italics: true,
+      margin: [0, 4, 0, 0],
+    },
+  ];
+}
+
+function corporateBankSections() {
+  return [
+    corporateDetailTable('BANK DETAILS OF NAGPUR', [
+      ['Bank Name', 'HDFC BANK LTD'],
+      ['Account Name', 'HOTEL CENTRE POINT'],
+      ['Account Number', '50200013055259'],
+      ['Account Type', 'CURRENT ACCOUNT'],
+      ['Bank Branch Address', '9, Hindustan Colony, Near Sai Mandir, Chawla Palace, Wardha Road, Nagpur - 440015'],
+      ['IFSC Code', 'HDFC0002818'],
+      ['MICR Code', '440240009'],
+      ['Branch Code', '002818'],
+    ]),
+    corporateDetailTable('BANK DETAILS OF NAVI MUMBAI', [
+      ['Bank Name', 'IDBI BANK'],
+      ['Account Name', 'VIJAN MOTORS SERVICES PVT LTD (UNIT OF HOTEL CENTRE POINT)'],
+      ['Account Number', '0123102000038322'],
+      ['Account Type', 'CURRENT ACCOUNT'],
+      ['Bank Branch Address', 'DC-1, Turbhe Naka, Mumbai - 400705, Maharashtra'],
+      ['IFSC Code', 'IBKL0000123'],
+      ['MICR Code', '440259008'],
+      ['Branch Code', '000123'],
+    ]),
+    {
+      ul: [
+        'Once the payment is transferred or TDS deducted, kindly intimate the UTR no. or payment snapshot on email id accounts@centrepointnagpur.com for Nagpur bills.',
+        'Once the payment is transferred or TDS deducted, kindly intimate the UTR no. or payment snapshot on email id account.navimumbai@cpgh.in for Navi Mumbai bills.',
+        'If the TDS is deducted from the bill amount but not deposited, it will again reflect as amount due. By signing this rate form, you agree to comply with the terms and conditions.',
+      ],
+      style: 'tdLeft',
+      margin: [0, 8, 0, 0],
+    },
+  ];
+}
+
+/** Acceptance fill-in block + "Yours Sincerely" signatories. */
+function corporateAcceptanceSections() {
+  const cell = (text = ' ') => ({ text, style: 'tdLeft', margin: [0, 9, 0, 9] });
+  return [
+    {
+      table: {
+        widths: ['22%', '38%', '*'],
+        body: [
+          barRow('Acceptance', 3),
+          [cell('Name *'), cell(), { text: 'Company Stamp *', style: 'tdLeft', rowSpan: 4 }],
+          [cell('Designation *'), cell(), {}],
+          [cell('Date *'), cell(), {}],
+          [cell('Place *'), cell(), {}],
+        ],
+      },
+      layout: GRID,
+      margin: [0, 12, 0, 0],
+      unbreakable: true,
+    },
+    {
+      stack: [
+        { text: 'Yours Sincerely,', fontSize: 9, margin: [0, 20, 0, 14] },
+        {
+          columns: [
+            {
+              stack: [
+                { text: 'Mohnish Ramtekkar', bold: true },
+                'Sales Manager',
+                'sales2.nagpur@cpgh.in',
+                '8805598616',
+              ],
+              fontSize: 9,
+            },
+            {
+              stack: [
+                { text: 'Shabir Hussain', bold: true },
+                'Corporate Head of Sales',
+                'sales.nm@cpgh.in',
+                '9763715978',
+              ],
+              fontSize: 9,
+            },
+          ],
+        },
+      ],
+      unbreakable: true,
+    },
+  ];
+}
+
+/** Blank Corporate Credit Application Form, as on the sample contract. */
+function creditApplicationSections() {
+  const label = (text, extra = {}) => ({ text, style: 'tdLeft', ...extra });
+  const fill = (extra = {}) => ({ text: ' ', style: 'tdLeft', ...extra });
+  const chk = (text) => ({ text: `[   ]  ${text}`, style: 'tdLeft', margin: [0, 1, 0, 1] });
+  const heading = (text) => ({
+    text,
+    bold: true,
+    color: MAROON,
+    fontSize: 10,
+    margin: [0, 12, 0, 3],
+  });
+
+  return [
+    {
+      text: 'Corporate Credit Application Form',
+      bold: true,
+      color: MAROON,
+      fontSize: 11,
+      alignment: 'center',
+      pageBreak: 'before',
+      margin: [0, 0, 0, 2],
+    },
+    {
+      text: '(Only in case Bill To Company is approved)',
+      alignment: 'center',
+      style: 'small',
+      margin: [0, 0, 0, 8],
+    },
+    {
+      table: {
+        widths: ['30%', '35%', '*'],
+        body: [
+          [label('Name in full (Company Name) *'), fill({ colSpan: 2 }), {}],
+          [label('Type of Organization *', { rowSpan: 3, margin: [0, 12, 0, 0] }), chk('Sole Proprietor'), chk('Private Ltd.')],
+          [{}, chk('Partnership'), chk('LLP')],
+          [{}, chk('Trust'), chk('Social Organization')],
+          [label('List of Partners / Directors / Members (if any)', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('1.'), label('2.')],
+          [{}, label('3.'), label('4.')],
+          [label('Company Address *'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
+          [fill(), label('City:'), label('State:')],
+          [fill(), label('PIN:'), fill()],
+          [label('Telephone & Fax Number *'), fill({ colSpan: 2 }), {}],
+          [label('Email / Website *'), fill({ colSpan: 2 }), {}],
+          [label('Contact Person *', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('Name:'), fill()],
+          [{}, label('Contact Number:'), fill()],
+          barRow('Billing Details (kindly ignore if same as above)', 3),
+          [label('Billing Name *'), fill({ colSpan: 2 }), {}],
+          [label('Billing Address *'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
+          [fill(), label('City:'), label('State:')],
+          [fill(), label('PIN:'), fill()],
+          [label('Company Registration Number *', { rowSpan: 4, margin: [0, 14, 0, 0] }), label('GST No.:'), fill()],
+          [{}, label('PAN No.:'), fill()],
+          [{}, label('CIN No.:'), fill()],
+          [{}, label('TAN No.:'), fill()],
+        ],
+      },
+      layout: GRID,
+    },
+    heading('CREDIT APPLICATION LIMIT:'),
+    {
+      table: {
+        widths: ['30%', '35%', '*'],
+        body: [
+          [label('Approximate Value of Business'), fill({ colSpan: 2 }), {}],
+          [label('Advance Collected'), fill({ colSpan: 2 }), {}],
+          [label('Credit Limit Requested *'), fill({ colSpan: 2 }), {}],
+          [label('Tick Charges that you will guarantee to Pay *', { rowSpan: 2, margin: [0, 16, 0, 0] }), label('Guest or Function Name:', { colSpan: 2 }), {}],
+          [
+            {},
+            { stack: [chk('Banquet – Food'), chk('Rooms Only'), chk('Restaurant Charges'), chk('Laundry / Minibar')] },
+            { stack: [chk('Banquet – Beverages'), chk('Room Service'), chk('All Charges'), chk('Others')] },
+          ],
+          [label('Details if ticked on Others'), fill({ colSpan: 2 }), {}],
+          [label('Credit Period'), label('15 Days', { colSpan: 2 }), {}],
+          barRow('Credit Card Information', 3),
+          [label('Credit Card Name / Issuing Bank'), fill({ colSpan: 2 }), {}],
+          [label("Card Holder's Name"), fill({ colSpan: 2 }), {}],
+          [label('Card Number'), fill({ colSpan: 2 }), {}],
+          [label('Valid Date (Month / Year)'), fill({ colSpan: 2 }), {}],
+          [label('Name and Address of your Banker'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
+          [label('Bank since & year'), fill({ colSpan: 2 }), {}],
+        ],
+      },
+      layout: GRID,
+    },
+    heading('FINANCIAL INFORMATION:'),
+    {
+      table: {
+        widths: ['*', '30%', '30%'],
+        body: [
+          [
+            { text: 'Particular', style: 'th' },
+            { text: 'F.Y. 20___ - ___', style: 'th' },
+            { text: 'F.Y. 20___ - ___', style: 'th' },
+          ],
+          [label('Turnover (Rs. in Lacs)'), label('Rs.'), label('Rs.')],
+          [label('Net Profit / Loss'), label('Rs.'), label('Rs.')],
+          [label('Net Worth'), label('Rs.'), label('Rs.')],
+          [label('External Debts'), label('Rs.'), label('Rs.')],
+        ],
+      },
+      layout: GRID,
+    },
+    heading('REFERENCES: *'),
+    {
+      text: 'Please provide two hotel references with whom you are availing credit.',
+      style: 'small',
+      margin: [0, 0, 0, 3],
+    },
+    {
+      table: {
+        widths: ['*', '20%', '17%', '17%', '16%'],
+        body: [
+          [
+            { text: 'Name of the Hotel', style: 'th' },
+            { text: 'Approximate Billing Amount', style: 'th' },
+            { text: 'Year of Relationship', style: 'th' },
+            { text: 'Contact Person', style: 'th' },
+            { text: 'Contact Number', style: 'th' },
+          ],
+          [fill({ margin: [0, 9, 0, 9] }), fill(), fill(), fill(), fill()],
+          [fill({ margin: [0, 9, 0, 9] }), fill(), fill(), fill(), fill()],
+        ],
+      },
+      layout: GRID,
+    },
+    {
+      ul: [
+        'I / We hereby confirm that the information given above is true and complete and authorize the Hotel to check references and agree to hold the hotel harmless from any action arising out of the legitimate and proper conduct of those reference checks.',
+        'I / We hereby agree that all bills are payable in 30 days. In the event such payment is not made within 30 days after the receipt of the original bill(s), the hotel may immediately impose a LATE PAYMENT CHARGE on the unpaid balance @ 24% p.a. plus all reasonable costs of collection, including attorney fees.',
+        'I / We hereby agree the hotel management shall be at liberty to withdraw the credit facilities at any time without giving any prior notice thereof and / or assigning any reason for the same.',
+        'I / We hereby agree the hotel management reserves the right to alter / modify the terms and conditions of credit and the same shall be binding on the party granted the credit facilities.',
+        'I / We hereby agree that disputes, if any, shall be subject to State Jurisdiction.',
+      ],
+      style: 'para',
+      margin: [0, 10, 0, 0],
+    },
+    {
+      columns: [
+        {
+          stack: [
+            { text: 'Name of Authorized Person :', margin: [0, 0, 0, 14] },
+            { text: 'Designation :', margin: [0, 0, 0, 14] },
+            { text: 'Company Stamp :' },
+          ],
+          fontSize: 9,
+        },
+        {
+          stack: [
+            { text: 'Place :', margin: [0, 0, 0, 14] },
+            { text: 'Date :' },
+          ],
+          fontSize: 9,
+        },
+      ],
+      margin: [0, 16, 0, 0],
+      unbreakable: true,
+    },
+    {
+      stack: [
+        sectionBar('FOR INTERNAL USE ONLY', [0, 18, 0, 0]),
+        {
+          table: {
+            widths: ['40%', '*'],
+            body: [
+              [label('Credit Limit Requested for Rs.'), fill()],
+              [label('Credit Limit Approved Rs.'), fill()],
+              [label('Credit Period Approved'), fill()],
+            ],
+          },
+          layout: GRID,
+        },
+        {
+          columns: [
+            {
+              stack: [
+                { text: 'Mohnish Ramtekkar', bold: true },
+                'Sales Manager',
+                'sales2.nagpur@cpgh.in',
+                '8805598616',
+              ],
+              fontSize: 9,
+            },
+            {
+              stack: [
+                { text: 'Shabir Hussain', bold: true },
+                'Corporate Head of Sales',
+                'sales.nm@cpgh.in',
+                '9763715978',
+              ],
+              fontSize: 9,
+            },
+          ],
+          margin: [0, 16, 0, 0],
+        },
+        {
+          columns: [
+            { text: 'Credit Manager / Asst. Accounts Manager', fontSize: 9, bold: true },
+            { text: 'Financial Controller / CFO', fontSize: 9, bold: true },
+          ],
+          margin: [0, 26, 0, 0],
+        },
+      ],
+      unbreakable: true,
+    },
+  ];
+}
+
 /** Builds the corporate room-rate agreement letter PDF. */
 export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   const d = kit.corporate || {};
@@ -978,7 +1350,7 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       margin: [0, 0, 0, 10],
     },
     { text: 'Dear Sir / Madam,', fontSize: 9, margin: [0, 0, 0, 6] },
-    { text: 'Greetings from Centre Point Hospitality!', fontSize: 9, margin: [0, 0, 0, 6] },
+    { text: 'Greetings from Centre Point Hotels & Resort!', fontSize: 9, margin: [0, 0, 0, 6] },
     {
       text: 'It gives me immense pleasure to inform you that we have customized a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
       style: 'para',
@@ -987,26 +1359,48 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   ];
 
   for (const property of d.properties || []) {
-    if (!(property.rows || []).some((r) => r.category || r.singleRate || r.doubleRate)) {
-      continue;
-    }
+    const plans = RATE_PLANS.filter((p) =>
+      (property.plans?.length ? property.plans : ['CP']).includes(p.code)
+    );
+    const hasContent = (property.rows || []).some(
+      (r) =>
+        r.category ||
+        plans.some((p) => planRate(r, p.code, 'Single') || planRate(r, p.code, 'Double'))
+    );
+    if (!hasContent) continue;
+
+    const rateColWidth = `${(62 / (plans.length * 2)).toFixed(2)}%`;
     content.push({
       table: {
-        widths: ['*', '20%', '17%', '17%'],
+        widths: ['*', '13%', ...plans.flatMap(() => [rateColWidth, rateColWidth])],
         body: [
-          barRow(`Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`, 4),
+          barRow(
+            `Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`,
+            2 + plans.length * 2
+          ),
           [
             { text: 'Room Category', style: 'th', rowSpan: 2, margin: [0, 7, 0, 0] },
             { text: 'Room Size', style: 'th', rowSpan: 2, margin: [0, 7, 0, 0] },
-            { text: 'Rates in INR on Continental Plan', style: 'th', colSpan: 2 },
-            {},
+            ...plans.flatMap((p) => [
+              { text: `Rates in INR on ${p.label}`, style: 'th', colSpan: 2 },
+              {},
+            ]),
           ],
-          [{}, {}, { text: 'Single', style: 'th' }, { text: 'Double', style: 'th' }],
+          [
+            {},
+            {},
+            ...plans.flatMap(() => [
+              { text: 'Single', style: 'th' },
+              { text: 'Double', style: 'th' },
+            ]),
+          ],
           ...property.rows.map((r) => [
             { text: r.category || '—', style: 'td' },
             { text: r.size || '—', style: 'td' },
-            { text: prettyNumber(r.singleRate) || '—', style: 'td' },
-            { text: prettyNumber(r.doubleRate) || '—', style: 'td' },
+            ...plans.flatMap((p) => [
+              { text: prettyNumber(planRate(r, p.code, 'Single')) || '—', style: 'td' },
+              { text: prettyNumber(planRate(r, p.code, 'Double')) || '—', style: 'td' },
+            ]),
           ]),
         ],
       },
@@ -1017,63 +1411,35 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   }
 
   for (const section of CORPORATE_SECTIONS(d)) {
+    if (section.note) {
+      content.push({ text: section.note, style: 'para', bold: true, margin: [0, 10, 0, 0] });
+      continue;
+    }
     content.push(
       { text: section.title, bold: true, color: MAROON, fontSize: 10, margin: [0, 10, 0, 3] },
       { ul: section.bullets, style: 'tdLeft' }
     );
   }
 
-  content.push({
-    text: 'NOTE: THESE ABOVE CORPORATE RATES WILL NOT BE APPLICABLE IN CASE OF CITY BIG EVENTS, HIGH DEMAND DATES, NATIONAL CONFERENCES IN CITY AND ON ASSEMBLY DATES. Category of rooms like Twin / King / Smoking / Non-Smoking will be subject to availability and as per the category booked.',
-    style: 'para',
-    bold: true,
-    margin: [0, 10, 0, 0],
-  });
-
   if (d.notes) {
     content.push({ text: d.notes, style: 'para', margin: [0, 8, 0, 0] });
   }
 
   content.push(
-    {
-      table: {
-        widths: ['30%', '*'],
-        body: [
-          barRow('Company Details', 2),
-          ...[
-            ['Company Name', d.companyName],
-            ['GST No', d.gstNumber],
-            ['PAN No', d.panNumber],
-          ].map(([l, v]) => [
-            { text: l, style: 'tdLeft' },
-            { text: v || '—', style: 'tdLeft' },
-          ]),
-        ],
-      },
-      layout: GRID,
-      margin: [0, 12, 0, 0],
-      unbreakable: true,
-    },
-    {
-      columns: [
-        {
-          stack: [
-            { text: 'For Centre Point Hospitality', bold: true, fontSize: 9 },
-            { text: '\n\n\n_________________________', fontSize: 9 },
-            { text: 'Authorized Signatory', style: 'small' },
-          ],
-        },
-        {
-          stack: [
-            { text: 'For the Company', bold: true, fontSize: 9 },
-            { text: '\n\n\n_________________________', fontSize: 9 },
-            { text: 'Signature with Date & Company Stamp', style: 'small' },
-          ],
-        },
-      ],
-      margin: [0, 28, 0, 0],
-      unbreakable: true,
-    }
+    corporateDetailTable('Company Details', [
+      ['Company Name', d.companyName],
+      ['GST No', d.gstNumber],
+      ['PAN No', d.panNumber],
+      ['Address', d.address],
+      ['Account Person Name', d.accountPersonName],
+      ['Account Person Number', d.accountPersonNumber],
+      ['Billing Address', d.billingAddress || d.address],
+      ['Official Email Address', d.email],
+    ]),
+    ...corporateContactsSection(),
+    ...corporateBankSections(),
+    ...corporateAcceptanceSections(),
+    ...creditApplicationSections()
   );
 
   return renderToBuffer(
