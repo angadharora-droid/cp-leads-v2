@@ -853,11 +853,11 @@ const CORPORATE_SECTIONS = (d) => [
     title: 'RATE INCLUSIONS:',
     bullets: [
       'Complimentary Breakfast for Residential Guest',
-      'In room Wi-Fi Services',
-      'In room Tea / Coffee maker',
-      'On the house packaged drinking water',
-      'Daily newspaper in the room',
-      'Usage of Gymnasium and Swimming Pool (Only for Nagpur)',
+      'In room Wi-Fi Services.',
+      'In room Tea / Coffee maker.',
+      'On the house packaged drinking water.',
+      'Daily newspaper in the room.',
+      'Usage of Gymnasium and Swimming Pool. (Only for Nagpur)',
     ],
   },
   {
@@ -876,7 +876,7 @@ const CORPORATE_SECTIONS = (d) => [
     bullets: [
       'Check-in time is 14:00hrs.',
       'Early check-in may be requested in advance, but is based on room availability upon arrival.',
-      'Between 07:00hrs - 12:00hrs at 50% of applicable room rate, or in case of early check-in not being contracted, guests will have to pay 50% of the applicable Best Available Rate of the day of check-in.',
+      'Between 07:00hrs - 12:00hrs at 50% of applicable room rate, or in case of early check-in not being contracted, guests will have to pay 50% of the applicable Best Available Rate of the day of check in.',
       'Before 07:00hrs an additional night will be charged at contract rates. In case of early check-in not being contracted, guests will be required to pay the full night charges of the applicable Best Available Rate of the previous night.',
     ],
   },
@@ -884,97 +884,99 @@ const CORPORATE_SECTIONS = (d) => [
     title: 'CHECK-OUT:',
     bullets: [
       'The check-out time is 12:00hrs.',
-      'Between 14:00hrs - 17:00hrs at 50% of applicable room rate, or in case of late check-out not being contracted, guests will have to pay 50% of the applicable Best Available Rate of the day of check-out.',
+      'Between 14:00hrs - 17:00hrs at 50% of applicable room rate, or in case of late check-out not being contracted, guests will have to pay 50% of the applicable Best Available Rate of the day of check out.',
       'After 17:00hrs an additional night will be charged at contract rates. In case of late check-out not being contracted, guests will be required to pay the full night charges of the applicable Best Available Rate of the required night.',
     ],
   },
   {
-    title: 'CHILDREN POLICY:',
-    bullets: ['Child up to 10 years will be complimentary without extra bed.'],
+    title: 'CHILDREN POLICY',
+    bullets: ['Child up to 10 year will be complimentary without extra bed.'],
   },
   {
-    title: 'RESERVATION POLICY:',
-    bullets: [
-      'All reservations should be made in writing, including guest details (name, arrival/departure date and clear billing instructions) through only the official email id as mentioned above.',
+    title: 'RESERVATION POLICY',
+    paras: [
+      'All reservations should be made in writing, including guest details (name, arrival/departure date and clear billing instructions) through only official email id as mentioned above.',
       'Should you have a guest in house without a previous reservation from your company, we will not accept any change of rate. All reservations are subject to availability and acceptance by the hotel at the time of booking.',
       'No change of names is allowed after reservation is made.',
     ],
   },
   {
-    title: 'CANCELLATION & NO-SHOW REFUND:',
-    bullets: [
-      "Should it be necessary for you to cancel a guaranteed reservation less than 24 hours in advance of the arrival date, one night's accommodation fee will be levied to the company's account or the credit card number which has been supplied.",
-      "Should the reservation be cancelled and the hotel is not notified, or in the instance that the guest does not arrive, a “No Show” or “Retention” charge equivalent to the first night's accommodation will be charged to the company's account or the credit card number which has been supplied. The said reservation would also be hereby released and any other booking or requirement would be subject to availability.",
-      'For all direct payment bookings the company will be held responsible for all no-shows and in case of credit bookings one night retention will be applicable as per the cancellation terms.',
-      'The booking would be fully refundable in form of credit note if cancelled before 24 hrs prior to the date of arrival (considering the check-in time to be 1400 hrs).',
-      'Refund policy: if a reservation is cancelled as per the above policy, a credit note will be issued within 30 days from the cancellation date; the same amount can be adjusted in future bookings.',
+    title: 'CANCELLATION & NO-SHOW REFUND',
+    paras: [
+      'Should it be necessary for you to cancel a guaranteed reservation less than 24 hours in advance of the arrival date, one night’s accommodation fee will be levied to the companies’ account or the credit card number which has been supplied.',
+      'Should the reservation be cancelled and the hotel is not notified, or in the instance that the guest does not arrive; a “No Show” or “Retention” charge equivalent to the first nights’ accommodation will be charged to the companies account or the credit card number which has been supplied. The said reservation would also be hereby released and any other booking or requirement would be subject to availability.',
+      'For all direct payment booking company will be held responsible for all No shows. If guest leaves hotel with out making payment company will have to make the payment on behalf of guest and in case of credit bookings one night retention will be applicable as per the cancellation terms.',
+      'The booking would be fully refundable in form of credit note will be issued if being cancelled before 24 Hrs. prior to the date of arrival. (Considering the check in time to be 1400 hrs.)',
+      'Refund policy- If reservation is cancelled as per the above policy, credit note will be issued within 30 days from cancellation date, the same amount can be adjusted in future bookings.',
     ],
   },
   {
-    title: 'EARLY DEPARTURE:',
-    bullets: [
-      "Guests who check out of the hotel prior to their scheduled departure date will be charged a fee equal to one night's room rate.",
-      'The departure date must be changed no later than check-in to avoid an early departure charge.',
+    title: 'EARLY DEPARTURE',
+    paras: [
+      'Guests who check out of the hotel prior to their scheduled departure date will be charged a fee equal to one night’s room rate.',
+      'The Departure date must be changed no later than check-in to avoid an early departure charge.',
     ],
   },
   {
-    title: 'SMOKING / ALCOHOL CONSUMPTION RULES:',
-    bullets: ['Smoking within the designated area is allowed.'],
+    title: 'Smoking/ Alcohol Consumption Rules:',
+    paras: ['Smoking within the designated area is allowed.'],
   },
   {
-    title: 'OTHER RULES:',
-    bullets: [
-      'Visitors are not allowed inside the room post 2200 hrs for the safety and security of residential guests.',
+    title: 'Other Rules:',
+    paras: [
+      'Visitors are not allowed inside the room post 2200 hrs for the safety and security of residential guest.',
     ],
   },
   {
     note:
-      'NOTE: THESE ABOVE CORPORATE RATES WILL NOT BE APPLICABLE IN CASE OF CITY BIG EVENTS, HIGH DEMAND DATES, NATIONAL CONFERENCES IN CITY AND ON ASSEMBLY DATES.\n' +
+      'NOTE: THESE ABOVE CORPORATE RATES WILL BE NOT APPLICABLE IN CASE OF CITY BIG EVENT, HIGH DEMAND DATES, NATIONAL CONFERENCES IN CITY AND ON ASSEMBLY DATES\n' +
       'ABOVE ROOM RATES ARE APPLICABLE FOR UPTO 06 ROOMS ONLY (NOT FOR GROUP BOOKING).\n' +
-      'Category of rooms like Twin / King / Smoking / Non-Smoking will be subject to availability and as per the category booked.',
+      'Category of rooms like Twin / King/ Smoking/ Non-Smoking will be subject to availability and as per the category booked.',
   },
   {
     title: 'CREDIT FACILITIES:',
     bullets: [
-      'All bills to be settled by cash / credit card at the time of checkout unless credit is approved by the hotel with a written communication between both the client and the hotel with a Credit Application Form duly stamped and signed by the company, and credit agreed mutually on said terms for amount and period. At any point of time the hotel has the right to stop credit in case of overdue as per the said limit and time.',
-      'In case of Bill To Company, payment would need to be settled within the mutually agreed terms.',
-      'BTC letters / mails from companies are mandatorily required BEFORE BOOKING.',
-      'Billing and BTC instructions for extras such as restaurant bills, laundry bills, liquor bills, etc. should be specified by the company so that billing is raised accordingly and payments can be collected at the time of checkout wherever extras are on direct payment basis.',
-      'Please inform the guest to sign on every BTC bill.',
+      'All bills to be settled by cash / credit card at the time of checkout unless it is a credit approved by the hotel with a written communication between both the client and the hotel with Credit Application Form duly stamped and signed by the company for availing credit and credit agreed mutually on said terms for amount and period. At any point of time hotel has all the right to stop credit in case of overdue as per the said limit and time.',
+      'In case of Bill To Company, payment would require to be settled within the mutually agreed terms.',
+      'BTC letters/ mails from companies are mandatorily required BEFORE BOOKING.',
+      'Billing and BTC instructions for extras billing such as restaurant bills, laundry bills, extras bills, Liquors bills, etc. should be specified by company so that billing will be raised accordingly and payments can be collected at the time of checkout where ever extras bills consumption is on direct payment basis.',
+      'Please inform the Guest to sign on every BTC bill.',
       'Any extra billing queries to be discussed and resolved before checkout.',
-      'BTC contract formalities to be completed 48 hours before guest check-in.',
-      'Advance amount to be deposited 48 hours before.',
+      'BTC contract formalities to be completed 48 hours before guest check in.',
+      'Advance amount be deposited 48 hours before.',
     ],
   },
   {
     title: 'PAYMENT:',
     bullets: [
-      'All bookings will be on direct payment only; in case of BTC, credit formalities need to be completed and on approval from the accounts team credit will be extended along with credit period and credit limit.',
-      'No credit would be allowed if either credit days or credit limits exceed the above terms.',
-      'As this is a rate contract agreement, provision of SEC 194-I for TDS deduction would not be applicable (circular no. 5/2002 dated 30-7-2002).',
+      'All bookings will be on direct payment only and in case of BTC credit formalities needs to be completed and on approval from accounts team after evaluation credit will be extended along with Credit period and credit limit.',
+      'Note * No credit would be allowed if Either credit days or credit limits exceeds the above terms.',
+      'As this is the rate contract agreement provision of SEC 194 I for the TDS deduction would not be applicable (attached circular no. 5/2002 dated 30-7-2002. Please read Page No. 5 para no. 3).',
     ],
   },
   {
     title: 'VALIDITY OF THIS AGREEMENT:',
     bullets: [
-      "This agreement comes into effect upon signature by an authorized representative of the 'Company' and once it has been returned to / received by the hotel.",
-      "Failing to sign this contract, the hotel will be at liberty to offer accommodation at the 'best available rate' at the time of reservation.",
+      'This agreement comes into effect upon signature by an authorized representative of the ‘Company’ and once it has returned to/received by the hotel.',
+      'Failing to sign this contract, the hotel will be at liberty to offer accommodation at the ‘best available rate’ at the time of reservation.',
       d.validUntil
         ? `The rates contained in this agreement are valid until ${prettyDate(d.validUntil)}; the hotel reserves the right to introduce amendments to this contract in the event of major changes of market conditions.`
         : 'The hotel reserves the right to introduce amendments to this contract in the event of major changes of market conditions.',
+    ],
+    paras: [
       'To qualify for your corporate rate, all reservations must be made by an authorized representative of the company. No alterations will be made either at the time of arrival or retroactively for bookings which are not made with full company references.',
     ],
   },
   {
     title: 'FORCE MAJEURE:',
-    bullets: [
+    paras: [
       'The Hotel shall not be held responsible for failure to execute the terms and conditions specified herein directly or indirectly through or in consequence of war, strikes, lockdowns, riots and acts of God beyond the control of the hotel.',
     ],
   },
   {
     title: 'CONFIDENTIALITY:',
-    bullets: [
-      "The contents of this contract and in particular the rates are strictly confidential. The 'Hotel' reserves the right to cancel this agreement in the event that the confidentiality is not respected.",
+    paras: [
+      'The contents of this contract and in particular the rates are strictly confidential. The ‘Hotel’ reserves the right to cancel this agreement in the event that the confidentiality is not respected.',
     ],
   },
 ];
@@ -1005,31 +1007,36 @@ function corporateContactsSection() {
   const header = () => [th('Department'), th('Name'), th('Designation'), th('Mobile'), th('Email')];
   return [
     {
+      text: 'POINT OF CONTACTS',
+      bold: true,
+      color: MAROON,
+      fontSize: 10,
+      margin: [0, 12, 0, 3],
+    },
+    {
       table: {
         widths: ['17%', '17%', '17%', '14%', '*'],
         body: [
-          barRow('POINT OF CONTACTS — Hotel', 5),
+          barRow('Hotel', 5),
           header(),
           [td('Sales'), td('Shabir Hussain'), td('Head of Sales'), td('9763715978'), td('sales.nm@cpgh.in')],
-          [td('Sales'), td('Mohnish Ramtekkar'), td('Sales Manager'), td('8805598616'), td('sales2.nagpur@cpgh.in')],
-          [td('Finance (Nagpur)'), td('Sushil Wasnik'), td('Accounts Receivable'), td('0712-6699168'), td('accounts@centrepointnagpur.com')],
-          [td('Finance (Navi Mumbai)'), td('Ganesh Kosekar'), td('Accounts Manager'), td('9011036267'), td('account.navimumbai@cpgh.in')],
-          barRow('POINT OF CONTACTS — Client', 5),
+          [td(), td('Mohnish Ramtekkar'), td('Sales Manager'), td('8805598616'), td('sales2.nagpur@cpgh.in')],
+          [td('Finance (NAGPUR)'), td('Sushil Wasnik'), td('Accounts Receivable'), td('0712-6699168'), td('accounts@centrepointnagpur.com')],
+          [td('Finance (NAVI MUMBAI)'), td('Ganesh Kosekar'), td('Accounts Manager'), td('9011036267'), td('account.navimumbai@cpgh.in')],
+          barRow('Client', 5),
           header(),
           [td('Admin *'), td(), td(), td(), td()],
-          [td('Admin * — Escalation 1'), td(), td(), td(), td()],
+          [td('Admin * Escalation 1'), td(), td(), td(), td()],
           [td('Finance *'), td(), td(), td(), td()],
-          [td('Finance * — Escalation 1'), td(), td(), td(), td()],
+          [td('Finance * Escalation 1'), td(), td(), td(), td()],
         ],
       },
       layout: GRID,
-      margin: [0, 12, 0, 0],
       unbreakable: true,
     },
     {
-      text: 'Note: The fields marked as * are mandatory without which the contract is incomplete.',
+      text: 'Note: The field marked as * are mandatory without which the contract is incomplete.',
       style: 'small',
-      italics: true,
       margin: [0, 4, 0, 0],
     },
   ];
@@ -1039,29 +1046,29 @@ function corporateBankSections() {
   return [
     corporateDetailTable('BANK DETAILS OF NAGPUR', [
       ['Bank Name', 'HDFC BANK LTD'],
-      ['Account Name', 'HOTEL CENTRE POINT'],
-      ['Account Number', '50200013055259'],
+      ['Account name', 'HOTEL CENTRE POINT'],
+      ['Account number', '50200013055259'],
       ['Account Type', 'CURRENT ACCOUNT'],
-      ['Bank Branch Address', '9, Hindustan Colony, Near Sai Mandir, Chawla Palace, Wardha Road, Nagpur - 440015'],
+      ['Bank Branch Address', '9, HINDUSTAN COLONY, NEAR SAI MANDIR, CHAWLA PALACE, WARDHA ROAD, NAGPUR- 440015'],
       ['IFSC Code', 'HDFC0002818'],
       ['MICR Code', '440240009'],
-      ['Branch Code', '002818'],
+      ['BRANCH Code', '002818'],
     ]),
     corporateDetailTable('BANK DETAILS OF NAVI MUMBAI', [
       ['Bank Name', 'IDBI BANK'],
-      ['Account Name', 'VIJAN MOTORS SERVICES PVT LTD (UNIT OF HOTEL CENTRE POINT)'],
-      ['Account Number', '0123102000038322'],
+      ['Account name', 'VIJAN MOTORS SERVICES PVT LTD (UNIT OF HOTEL CENTRE POINT)'],
+      ['Account number', '0123102000038322'],
       ['Account Type', 'CURRENT ACCOUNT'],
-      ['Bank Branch Address', 'DC-1, Turbhe Naka, Mumbai - 400705, Maharashtra'],
+      ['Bank Branch Address', 'DC-1, Turbhe Naka Mumbai, 400705, Maharashtra'],
       ['IFSC Code', 'IBKL0000123'],
       ['MICR Code', '440259008'],
-      ['Branch Code', '000123'],
+      ['BRANCH Code', '000123'],
     ]),
     {
       ul: [
-        'Once the payment is transferred or TDS deducted, kindly intimate the UTR no. or payment snapshot on email id accounts@centrepointnagpur.com for Nagpur bills.',
-        'Once the payment is transferred or TDS deducted, kindly intimate the UTR no. or payment snapshot on email id account.navimumbai@cpgh.in for Navi Mumbai bills.',
-        'If the TDS is deducted from the bill amount but not deposited, it will again reflect as amount due. By signing this rate form, you agree to comply with the terms and conditions.',
+        'Once the payment are transferred or TDS deducted, kindly intimate us UTR no. or payment snap on email ID accounts@centrepointnagpur.com for Nagpur bills',
+        'Once the payment are transferred or TDS deducted, kindly intimate us UTR no. or payment snap on email ID account.navimumbai@cpgh.in for Navi Mumbai bills',
+        'If the TDS deducted from bill amount but not deposited it will again reflect as amount due. By signing this rate form, you agreed to comply with the terms and conditions.',
       ],
       style: 'tdLeft',
       margin: [0, 8, 0, 0],
@@ -1078,10 +1085,10 @@ function corporateAcceptanceSections() {
         widths: ['22%', '38%', '*'],
         body: [
           barRow('Acceptance', 3),
-          [cell('Name *'), cell(), { text: 'Company Stamp *', style: 'tdLeft', rowSpan: 4 }],
-          [cell('Designation *'), cell(), {}],
-          [cell('Date *'), cell(), {}],
-          [cell('Place *'), cell(), {}],
+          [cell('Name : *'), cell(), { text: 'Company Stamp *', style: 'tdLeft', rowSpan: 4 }],
+          [cell('Designation : *'), cell(), {}],
+          [cell('Date : *'), cell(), {}],
+          [cell('Place : *'), cell(), {}],
         ],
       },
       layout: GRID,
@@ -1143,7 +1150,7 @@ function creditApplicationSections() {
       margin: [0, 0, 0, 2],
     },
     {
-      text: '(Only in case Bill To Company is approved)',
+      text: '(only in case Bill to company is approved)',
       alignment: 'center',
       style: 'small',
       margin: [0, 0, 0, 8],
@@ -1156,16 +1163,16 @@ function creditApplicationSections() {
           [label('Type of Organization *', { rowSpan: 3, margin: [0, 12, 0, 0] }), chk('Sole Proprietor'), chk('Private Ltd.')],
           [{}, chk('Partnership'), chk('LLP')],
           [{}, chk('Trust'), chk('Social Organization')],
-          [label('List of Partners / Directors / Members (if any)', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('1.'), label('2.')],
+          [label('List of Partners/Directors/Members (if any)', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('1.'), label('2.')],
           [{}, label('3.'), label('4.')],
           [label('Company Address *'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
           [fill(), label('City:'), label('State:')],
           [fill(), label('PIN:'), fill()],
           [label('Telephone & Fax Number *'), fill({ colSpan: 2 }), {}],
-          [label('Email / Website *'), fill({ colSpan: 2 }), {}],
-          [label('Contact Person *', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('Name:'), fill()],
-          [{}, label('Contact Number:'), fill()],
-          barRow('Billing Details (kindly ignore if same as above)', 3),
+          [label('Email/Website *'), fill({ colSpan: 2 }), {}],
+          [label('Contact Person *', { rowSpan: 2, margin: [0, 6, 0, 0] }), label('Name'), fill()],
+          [{}, label('Contact Number'), fill()],
+          barRow('Billing Details (Kindly ignore if same as above)', 3),
           [label('Billing Name *'), fill({ colSpan: 2 }), {}],
           [label('Billing Address *'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
           [fill(), label('City:'), label('State:')],
@@ -1189,17 +1196,17 @@ function creditApplicationSections() {
           [label('Tick Charges that you will guarantee to Pay *', { rowSpan: 2, margin: [0, 16, 0, 0] }), label('Guest or Function Name:', { colSpan: 2 }), {}],
           [
             {},
-            { stack: [chk('Banquet – Food'), chk('Rooms Only'), chk('Restaurant Charges'), chk('Laundry / Minibar')] },
+            { stack: [chk('Banquet – Food'), chk('Rooms Only'), chk('Restaurant Charges'), chk('Laundry/Minibar')] },
             { stack: [chk('Banquet – Beverages'), chk('Room Service'), chk('All Charges'), chk('Others')] },
           ],
           [label('Details if ticked on Others'), fill({ colSpan: 2 }), {}],
           [label('Credit Period'), label('15 Days', { colSpan: 2 }), {}],
           barRow('Credit Card Information', 3),
-          [label('Credit Card Name / Issuing Bank'), fill({ colSpan: 2 }), {}],
-          [label("Card Holder's Name"), fill({ colSpan: 2 }), {}],
+          [label('Credit Card Name/Issuing Bank'), fill({ colSpan: 2 }), {}],
+          [label('Written Holder’s Name'), fill({ colSpan: 2 }), {}],
           [label('Card Number'), fill({ colSpan: 2 }), {}],
-          [label('Valid Date (Month / Year)'), fill({ colSpan: 2 }), {}],
-          [label('Name and Address of your Banker'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
+          [label('Valid Date (Month/Year)'), fill({ colSpan: 2 }), {}],
+          [label('Name and Address of your banker'), fill({ colSpan: 2, margin: [0, 9, 0, 9] }), {}],
           [label('Bank since & year'), fill({ colSpan: 2 }), {}],
         ],
       },
@@ -1212,11 +1219,11 @@ function creditApplicationSections() {
         body: [
           [
             { text: 'Particular', style: 'th' },
-            { text: 'F.Y. 20___ - ___', style: 'th' },
-            { text: 'F.Y. 20___ - ___', style: 'th' },
+            { text: 'F.Y. 2019-20', style: 'th' },
+            { text: 'F.Y. 2020-21', style: 'th' },
           ],
-          [label('Turnover (Rs. in Lacs)'), label('Rs.'), label('Rs.')],
-          [label('Net Profit / Loss'), label('Rs.'), label('Rs.')],
+          [label('Turnover (Rs. In Lacs)'), label('Rs.'), label('Rs.')],
+          [label('NET Profit/Loss'), label('Rs.'), label('Rs.')],
           [label('Net Worth'), label('Rs.'), label('Rs.')],
           [label('External Debts'), label('Rs.'), label('Rs.')],
         ],
@@ -1225,7 +1232,7 @@ function creditApplicationSections() {
     },
     heading('REFERENCES: *'),
     {
-      text: 'Please provide two hotel references with whom you are availing credit.',
+      text: 'Please provide two hotel reference with whom you are availing credit',
       style: 'small',
       margin: [0, 0, 0, 3],
     },
@@ -1235,7 +1242,7 @@ function creditApplicationSections() {
         body: [
           [
             { text: 'Name of the Hotel', style: 'th' },
-            { text: 'Approximate Billing Amount', style: 'th' },
+            { text: 'Approximate Billing amount', style: 'th' },
             { text: 'Year of Relationship', style: 'th' },
             { text: 'Contact Person', style: 'th' },
             { text: 'Contact Number', style: 'th' },
@@ -1247,14 +1254,13 @@ function creditApplicationSections() {
       layout: GRID,
     },
     {
-      ul: [
-        'I / We hereby confirm that the information given above is true and complete and authorize the Hotel to check references and agree to hold the hotel harmless from any action arising out of the legitimate and proper conduct of those reference checks.',
-        'I / We hereby agree that all bills are payable in 30 days. In the event such payment is not made within 30 days after the receipt of the original bill(s), the hotel may immediately impose a LATE PAYMENT CHARGE on the unpaid balance @ 24% p.a. plus all reasonable costs of collection, including attorney fees.',
-        'I / We hereby agree the hotel management shall be at liberty to withdraw the credit facilities at any time without giving any prior notice thereof and / or assigning any reason for the same.',
-        'I / We hereby agree the hotel management reserves the right to alter / modify the terms and conditions of credit and the same shall be binding on the party granted the credit facilities.',
-        'I / We hereby agree that disputes, if any, shall be subject to State Jurisdiction.',
-      ],
-      style: 'para',
+      stack: [
+        '*I / We hereby confirm that the information given above is true and complete and authorize the Hotel to check references and agree to hold the hotel harmless from any action arising out of the legitimate and proper conduct of those reference checks.',
+        '* I / We hereby agree that all bills are payable in 30 days. In the event such payment is not made within 30 days after the receipt of the original bill/s, the hotel may immediately impose a LATE PAYMENT CHARGE on the unpaid balance @ 24 % pa plus all reasonable cost of collection, including attorney fees.',
+        '* I / We hereby agree the hotel management shall be at liberty to withdraw the credit facilities at any time without giving any prior notice thereof and or assigning any reason for the same.',
+        '*I/ We hereby agree the hotel management reserves the right to alter / modify the terms and conditions of credit and the same shall be binding on the party granted the credit facilities',
+        '* I / We hereby agree the Disputes, if any shall be subjected to State Jurisdiction.',
+      ].map((text) => ({ text, style: 'para', margin: [0, 2, 0, 2] })),
       margin: [0, 10, 0, 0],
     },
     {
@@ -1317,8 +1323,8 @@ function creditApplicationSections() {
         },
         {
           columns: [
-            { text: 'Credit Manager / Asst. Accounts Manager', fontSize: 9, bold: true },
-            { text: 'Financial Controller / CFO', fontSize: 9, bold: true },
+            { text: 'Credit Manager/ Asst. Accounts Manager', fontSize: 9, bold: true },
+            { text: 'Financial Controller/ CFO', fontSize: 9, bold: true },
           ],
           margin: [0, 26, 0, 0],
         },
@@ -1331,28 +1337,32 @@ function creditApplicationSections() {
 /** Builds the corporate room-rate agreement letter PDF. */
 export async function buildCorporatePdf(kit, { dateLabel } = {}) {
   const d = kit.corporate || {};
+  // The sample contract writes the date as DD/MM/YYYY ("Date – 18/09/2025").
   const docDate =
     dateLabel ||
-    formatLongDate(kit.createdAt ? new Date(kit.createdAt) : new Date());
+    new Date(kit.createdAt ? kit.createdAt : Date.now()).toLocaleDateString('en-GB');
 
   const content = [
-    { text: `Date: ${docDate}`, alignment: 'right', fontSize: 9, margin: [0, 0, 0, 8] },
+    { text: `Date – ${docDate}`, fontSize: 9, margin: [0, 0, 0, 8] },
     {
       stack: [
         { text: 'To,', fontSize: 9 },
-        d.contactPerson ? { text: d.contactPerson, fontSize: 9, bold: true } : null,
-        d.companyName ? { text: d.companyName, fontSize: 9, bold: true } : null,
-        d.mobile ? { text: `Mobile No: ${d.mobile}`, fontSize: 9 } : null,
-        d.address ? { text: `Add: ${d.address}`, fontSize: 9 } : null,
-        d.email ? { text: `Email Id: ${d.email}`, fontSize: 9 } : null,
-        d.gstNumber ? { text: `GST: ${d.gstNumber}`, fontSize: 9 } : null,
-      ].filter(Boolean),
+        {
+          text: [d.contactPerson, d.companyName].filter(Boolean).join(' ') || ' ',
+          fontSize: 9,
+          bold: true,
+        },
+        { text: `Phone – ${d.mobile || ''}`, fontSize: 9 },
+        { text: `Email.Id:- ${d.email || ''}`, fontSize: 9 },
+        { text: `Address:- ${d.address || ''}`, fontSize: 9 },
+        { text: `GST Number: ${d.gstNumber || ''}`, fontSize: 9 },
+      ],
       margin: [0, 0, 0, 10],
     },
-    { text: 'Dear Sir / Madam,', fontSize: 9, margin: [0, 0, 0, 6] },
-    { text: 'Greetings from Centre Point Hotels & Resort!', fontSize: 9, margin: [0, 0, 0, 6] },
+    { text: 'Dear Sir,', fontSize: 9, margin: [0, 0, 0, 6] },
+    { text: 'Greetings from Centre Point Hotels & Resort', fontSize: 9, margin: [0, 0, 0, 6] },
     {
-      text: 'It gives me immense pleasure to inform you that we have customized a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
+      text: 'It gives me immense pleasure to inform you that we have customize a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
       style: 'para',
       margin: [0, 0, 0, 4],
     },
@@ -1415,10 +1425,11 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       content.push({ text: section.note, style: 'para', bold: true, margin: [0, 10, 0, 0] });
       continue;
     }
-    content.push(
-      { text: section.title, bold: true, color: MAROON, fontSize: 10, margin: [0, 10, 0, 3] },
-      { ul: section.bullets, style: 'tdLeft' }
-    );
+    content.push({ text: section.title, bold: true, color: MAROON, fontSize: 10, margin: [0, 10, 0, 3] });
+    if (section.bullets) content.push({ ul: section.bullets, style: 'tdLeft' });
+    for (const para of section.paras || []) {
+      content.push({ text: para, style: 'para', margin: [0, 2, 0, 2] });
+    }
   }
 
   if (d.notes) {
@@ -1434,7 +1445,7 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       ['Account Person Name', d.accountPersonName],
       ['Account Person Number', d.accountPersonNumber],
       ['Billing Address', d.billingAddress || d.address],
-      ['Official Email Address', d.email],
+      ['Official Email address', d.email],
     ]),
     ...corporateContactsSection(),
     ...corporateBankSections(),
