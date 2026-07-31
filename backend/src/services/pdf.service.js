@@ -1,6 +1,6 @@
 import pdfmake from 'pdfmake';
 
-import { CP_LOGO } from './pdfAssets.js';
+import { CP_LOGO, CP_CONTRACT_LOGO } from './pdfAssets.js';
 
 // Standard PDF fonts — no font files needed, works everywhere (incl. serverless).
 pdfmake.setFonts({
@@ -90,43 +90,59 @@ function labelValueRows(pairs) {
   ]);
 }
 
-function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docStyles = styles } = {}) {
+function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docStyles = styles, letterStyle = false } = {}) {
   return {
     pageSize: 'A4',
     pageMargins: [42, 92, 42, 52],
     defaultStyle: { font, fontSize },
     styles: docStyles,
-    images: { cpLogo: CP_LOGO },
-    header: () => ({
-      stack: [
-        { image: 'cpLogo', width: 150, alignment: 'center', margin: [0, 14, 0, 6] },
-        {
-          canvas: [
-            { type: 'rect', x: 0, y: 0, w: 511, h: 4, color: RULE_BROWN },
-          ],
-        },
-      ],
-      margin: [42, 0, 42, 0],
-    }),
-    footer: (currentPage) => ({
+    images: { cpLogo: CP_LOGO, cpContractLogo: CP_CONTRACT_LOGO },
+    // letterStyle mirrors the Word contract: its own letterhead logo top-left
+    // with no rule, footer rule with a right-aligned "Page X of Y".
+    header: () =>
+      letterStyle
+        ? {
+            stack: [{ image: 'cpContractLogo', width: 160, margin: [0, 16, 0, 6] }],
+            margin: [42, 0, 42, 0],
+          }
+        : {
+            stack: [
+              { image: 'cpLogo', width: 150, alignment: 'center', margin: [0, 14, 0, 6] },
+              {
+                canvas: [
+                  { type: 'rect', x: 0, y: 0, w: 511, h: 4, color: RULE_BROWN },
+                ],
+              },
+            ],
+            margin: [42, 0, 42, 0],
+          },
+    footer: (currentPage, pageCount) => ({
       stack: [
         {
           canvas: [
             { type: 'rect', x: 0, y: 0, w: 511, h: 3, color: RULE_BROWN },
           ],
         },
-        {
-          columns: [
-            { text: `${currentPage} | Page`, style: 'small', color: '#555555' },
-            {
-              text: footerLabel,
+        letterStyle
+          ? {
+              text: `Page ${currentPage} of ${pageCount}`,
               alignment: 'right',
               style: 'small',
               color: '#555555',
+              margin: [0, 4, 0, 0],
+            }
+          : {
+              columns: [
+                { text: `${currentPage} | Page`, style: 'small', color: '#555555' },
+                {
+                  text: footerLabel,
+                  alignment: 'right',
+                  style: 'small',
+                  color: '#555555',
+                },
+              ],
+              margin: [0, 4, 0, 0],
             },
-          ],
-          margin: [0, 4, 0, 0],
-        },
       ],
       margin: [42, 6, 42, 0],
     }),
@@ -838,13 +854,13 @@ const CORPORATE_STYLES = {
   th: { bold: true, alignment: 'center', fontSize: 11 },
   td: { alignment: 'center', fontSize: 11 },
   tdLeft: { fontSize: 11 },
-  para: { fontSize: 12 },
+  para: { fontSize: 12, lineHeight: 1.15 },
   small: { fontSize: 10 },
 };
 
 /** Plain black bold heading, as in the Word contract. */
-function corpHeading(text, margin = [0, 10, 0, 3]) {
-  return { text, bold: true, fontSize: 12, margin };
+function corpHeading(text, margin = [0, 14, 0, 6], extra = {}) {
+  return { text, bold: true, fontSize: 12, margin, ...extra };
 }
 
 // Meal plans offered on corporate contracts, in printed column order
@@ -867,8 +883,15 @@ function planRate(row, code, side) {
 const CORPORATE_SECTIONS = (d) => [
   {
     title: 'RATES IN THIS AGREEMENT ARE:',
+    underline: true,
+    breakAfter: true,
     bullets: [
-      d.validUntil ? `Rates are valid till ${prettyDate(d.validUntil)}` : 'Rates are valid as agreed',
+      {
+        text: d.validUntil
+          ? `Rates are valid till ${prettyDate(d.validUntil)}`
+          : 'Rates are valid as agreed',
+        bold: true,
+      },
       'Exclusive of GST',
       'Valid for all new bookings and subject to availability',
       'Prior reservation is required from the company to avail the corporate rates',
@@ -1361,27 +1384,27 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
     new Date(kit.createdAt ? kit.createdAt : Date.now()).toLocaleDateString('en-GB');
 
   const content = [
-    { text: `Date – ${docDate}`, margin: [0, 0, 0, 8] },
+    { text: `Date – ${docDate}`, alignment: 'right', bold: true, margin: [0, 0, 0, 16] },
     {
       stack: [
         { text: 'To,' },
-        {
-          text: [d.contactPerson, d.companyName].filter(Boolean).join(' ') || ' ',
-          bold: true,
-        },
+        d.contactPerson ? { text: d.contactPerson } : null,
+        d.companyName ? { text: d.companyName } : null,
         { text: `Phone – ${d.mobile || ''}` },
         { text: `Email.Id:- ${d.email || ''}` },
         { text: `Address:- ${d.address || ''}` },
         { text: `GST Number: ${d.gstNumber || ''}` },
-      ],
-      margin: [0, 0, 0, 10],
+      ].filter(Boolean),
+      bold: true,
+      lineHeight: 1.1,
+      margin: [0, 0, 0, 18],
     },
-    { text: 'Dear Sir,', margin: [0, 0, 0, 6] },
-    { text: 'Greetings from Centre Point Hotels & Resort', margin: [0, 0, 0, 6] },
+    { text: 'Dear Sir,', margin: [0, 0, 0, 14] },
+    { text: 'Greetings from Centre Point Hotels & Resort', margin: [0, 0, 0, 14] },
     {
       text: 'It gives me immense pleasure to inform you that we have customize a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
       style: 'para',
-      margin: [0, 0, 0, 4],
+      margin: [0, 0, 0, 6],
     },
   ];
 
@@ -1398,7 +1421,9 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
 
     const rateColWidth = `${(62 / (plans.length * 2)).toFixed(2)}%`;
     content.push(
-      corpHeading(`Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`)
+      corpHeading(`Corporate Rates for ${property.propertyName || 'Hotel Centre Point'}`, [0, 16, 0, 8], {
+        alignment: 'center',
+      })
     );
     content.push({
       table: {
@@ -1421,16 +1446,20 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
             ]),
           ],
           ...property.rows.map((r) => [
-            { text: r.category || '—', style: 'td' },
+            { text: r.category || '—', style: 'tdLeft' },
             { text: r.size || '—', style: 'td' },
+            // Rates print exactly as typed — the sample contract shows "4500",
+            // not "4,500".
             ...plans.flatMap((p) => [
-              { text: prettyNumber(planRate(r, p.code, 'Single')) || '—', style: 'td' },
-              { text: prettyNumber(planRate(r, p.code, 'Double')) || '—', style: 'td' },
+              { text: planRate(r, p.code, 'Single') || '—', style: 'td' },
+              { text: planRate(r, p.code, 'Double') || '—', style: 'td' },
             ]),
           ]),
         ],
       },
       layout: GRID,
+      // The Word contract insets its rate tables from both page edges.
+      margin: [40, 0, 40, 0],
       unbreakable: true,
     });
   }
@@ -1440,11 +1469,21 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       content.push({ text: section.note, style: 'para', bold: true, margin: [0, 10, 0, 0] });
       continue;
     }
-    content.push(corpHeading(section.title));
-    if (section.bullets) content.push({ ul: section.bullets, style: 'para' });
-    for (const para of section.paras || []) {
-      content.push({ text: para, style: 'para', margin: [0, 2, 0, 2] });
+    content.push(
+      corpHeading(section.title, [0, 14, 0, 6], section.underline ? { decoration: 'underline' } : {})
+    );
+    if (section.bullets) {
+      content.push({
+        ul: section.bullets.map((b) =>
+          typeof b === 'string' ? { text: b, margin: [0, 2, 0, 2] } : { ...b, margin: [0, 2, 0, 2] }
+        ),
+        style: 'para',
+      });
     }
+    for (const para of section.paras || []) {
+      content.push({ text: para, style: 'para', margin: [0, 3, 0, 6] });
+    }
+    if (section.breakAfter) content.push({ text: '', pageBreak: 'after' });
   }
 
   if (d.notes) {
@@ -1473,6 +1512,7 @@ export async function buildCorporatePdf(kit, { dateLabel } = {}) {
       font: 'Times',
       fontSize: 12,
       docStyles: CORPORATE_STYLES,
+      letterStyle: true,
     })
   );
 }
