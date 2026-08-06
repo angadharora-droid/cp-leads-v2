@@ -133,42 +133,61 @@ const EMPTY_CORPORATE_RATE_ROW = {
   epDouble: '',
 };
 
-/** Room categories per property, from the hotels' websites
-    (centrepointnagpur.com, centrepointnavimumbai.com, centrepointamravati.com).
-    Sizes are blank where the site doesn't publish one. */
+/** Room categories per property, exactly as published on the hotels' websites
+    (centrepointnagpur.com/our-rooms, centrepointnavimumbai.com,
+    centrepointamravati.com/rooms). */
 const PROPERTY_ROOM_OPTIONS = {
   nagpur: [
-    { category: 'Executive', size: '278 sq.ft' },
-    { category: 'Premium', size: '312 sq.ft' },
-    { category: 'Club', size: '402 sq.ft' },
-    { category: 'Super Club', size: '' },
-    { category: 'Deluxe Suite', size: '' },
-    { category: 'CP Suite', size: '' },
+    { category: 'Executive Room', size: '245 sq.ft' },
+    { category: 'Premium Room', size: '278 sq.ft' },
+    { category: 'Club Room', size: '312 sq.ft' },
+    { category: 'Super Club', size: '402 sq.ft' },
+    { category: 'Deluxe Suite', size: '650 sq.ft' },
+    { category: 'CP Suite', size: '1800 sq.ft' },
   ],
   naviMumbai: [
     { category: 'Premium Twin Bedroom', size: '305 sq.ft' },
     { category: 'Club Master Bedroom', size: '255 sq.ft' },
   ],
   amravati: [
-    { category: 'Executive Room', size: '180 sq.ft' },
-    { category: 'Premium Room', size: '250 sq.ft' },
+    { category: 'Executive', size: '180 sq.ft' },
+    { category: 'Premium', size: '250 sq.ft' },
     { category: 'Family Premium', size: '325 sq.ft' },
-    { category: 'Club Room', size: '400 sq.ft' },
+    { category: 'Club', size: '400 sq.ft' },
     { category: 'Deluxe Suite', size: '600 sq.ft' },
     { category: 'Luxury Suite', size: '800 sq.ft' },
   ],
 };
 
-function roomOptionsForProperty(propertyName) {
+function propertyKeyFor(propertyName) {
   const name = (propertyName || '').toLowerCase();
-  if (name.includes('navi mumbai')) return PROPERTY_ROOM_OPTIONS.naviMumbai;
-  if (name.includes('amravati')) return PROPERTY_ROOM_OPTIONS.amravati;
-  if (name.includes('nagpur')) return PROPERTY_ROOM_OPTIONS.nagpur;
-  return [
-    ...PROPERTY_ROOM_OPTIONS.nagpur,
-    ...PROPERTY_ROOM_OPTIONS.naviMumbai,
-    ...PROPERTY_ROOM_OPTIONS.amravati,
-  ];
+  if (name.includes('navi mumbai')) return 'naviMumbai';
+  if (name.includes('amravati')) return 'amravati';
+  if (name.includes('nagpur')) return 'nagpur';
+  return null;
+}
+
+/** All of a property's room categories as pre-filled rate rows — the user
+    deletes the ones they don't need instead of picking from a dropdown. */
+function defaultRowsForProperty(propertyName) {
+  const options = PROPERTY_ROOM_OPTIONS[propertyKeyFor(propertyName)] || [];
+  if (!options.length) return [{ ...EMPTY_CORPORATE_RATE_ROW }];
+  return options.map((o) => ({
+    ...EMPTY_CORPORATE_RATE_ROW,
+    category: o.category,
+    size: o.size,
+  }));
+}
+
+const RATE_CELL_KEYS = RATE_PLANS.flatMap((p) => [
+  `${p.code.toLowerCase()}Single`,
+  `${p.code.toLowerCase()}Double`,
+]);
+
+function hasTypedRates(rows) {
+  return (rows || []).some((row) =>
+    RATE_CELL_KEYS.some((key) => String(row[key] ?? '').trim() !== '')
+  );
 }
 
 function defaultEventDetails(lead) {
@@ -220,19 +239,12 @@ function defaultCorporateDetails(lead) {
       {
         propertyName: 'Hotel Centre Point, Nagpur',
         plans: ['CP'],
-        rows: [
-          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Executive', size: '278 sq.ft' },
-          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Premium', size: '312 sq.ft' },
-          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Club', size: '402 sq.ft' },
-        ],
+        rows: defaultRowsForProperty('Hotel Centre Point, Nagpur'),
       },
       {
         propertyName: 'Hotel Centre Point, Navi Mumbai',
         plans: ['CP'],
-        rows: [
-          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Premium Twin Bedroom', size: '305 sq.ft' },
-          { ...EMPTY_CORPORATE_RATE_ROW, category: 'Club Master Bedroom', size: '255 sq.ft' },
-        ],
+        rows: defaultRowsForProperty('Hotel Centre Point, Navi Mumbai'),
       },
     ],
     validUntil: '',
@@ -1112,7 +1124,6 @@ function CorporateKitForm({ form, update }) {
       </Card>
 
       {(form.properties || []).map((property, idx) => {
-        const roomOptions = roomOptionsForProperty(property.propertyName);
         const selectedPlans = property.plans?.length ? property.plans : ['CP'];
         const rateColumns = RATE_PLANS.filter((p) => selectedPlans.includes(p.code)).flatMap(
           (p) => [
@@ -1142,7 +1153,20 @@ function CorporateKitForm({ form, update }) {
               <TextField
                 label="Property Name"
                 value={property.propertyName}
-                onChange={(v) => updateProperty(idx, { propertyName: v })}
+                onChange={(v) => {
+                  const patch = { propertyName: v };
+                  // Recognising a different property pre-fills all of its room
+                  // categories — unless rates were already typed in.
+                  const key = propertyKeyFor(v);
+                  if (
+                    key &&
+                    key !== propertyKeyFor(property.propertyName) &&
+                    !hasTypedRates(property.rows)
+                  ) {
+                    patch.rows = defaultRowsForProperty(v);
+                  }
+                  updateProperty(idx, patch);
+                }}
                 placeholder="Hotel Centre Point, Nagpur"
               />
               <div className="space-y-1.5">
@@ -1180,19 +1204,15 @@ function CorporateKitForm({ form, update }) {
               </div>
               <RowsEditor
                 title="Room rates (INR)"
+                description="All room categories for the property are pre-filled — remove the rows you don't need."
                 columns={[
                   {
                     key: 'category',
                     label: 'Room category',
-                    placeholder: 'Select category',
+                    placeholder: 'Executive Room',
                     width: 170,
-                    options: roomOptions.map((o) => o.category),
-                    fill: (value) => {
-                      const option = roomOptions.find((o) => o.category === value);
-                      return option?.size ? { size: option.size } : {};
-                    },
                   },
-                  { key: 'size', label: 'Room size', placeholder: '278 sq.ft' },
+                  { key: 'size', label: 'Room size', placeholder: '245 sq.ft' },
                   ...rateColumns,
                 ]}
                 rows={property.rows}
@@ -1273,9 +1293,10 @@ function KitActions({ kit, setKit, leadId, navigate }) {
   async function handleDownload(doc, label) {
     setDownloading(doc || 'main');
     try {
-      await downloadKitPdf(kit._id, doc, `${label}.pdf`);
+      // Corporate agreements download as Word documents; event docs as PDFs.
+      await downloadKitPdf(kit._id, doc, `${label}.${isEvent ? 'pdf' : 'docx'}`);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to generate PDF'));
+      toast.error(getErrorMessage(err, 'Failed to generate document'));
     } finally {
       setDownloading(null);
     }
@@ -1402,7 +1423,7 @@ function KitActions({ kit, setKit, leadId, navigate }) {
               ) : (
                 <FileDown className="h-4 w-4" />
               )}
-              Agreement PDF
+              Agreement (Word)
             </Button>
           )}
 

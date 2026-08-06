@@ -181,7 +181,7 @@ export async function sendKitEmail(kitId, payload, actor, req) {
   const { kit, lead } = await loadKitScoped(kitId, actor);
   const docType = kit.kitType === 'corporate' ? 'proposal' : payload.docType || 'proposal';
 
-  const { buffer, filename } = await buildKitPdf(kit, docType);
+  const { buffer, filename, contentType } = await buildKitPdf(kit, docType);
 
   const docName =
     kit.kitType === 'corporate'
@@ -211,7 +211,7 @@ export async function sendKitEmail(kitId, payload, actor, req) {
       cc: payload.cc,
       subject,
       text,
-      attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
+      attachments: [{ filename, content: buffer, contentType }],
     });
   } catch (err) {
     // Configuration errors surface as-is; transport errors are logged on the kit.

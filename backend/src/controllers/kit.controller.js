@@ -28,12 +28,12 @@ export const remove = asyncHandler(async (req, res) => {
 });
 
 export const downloadPdf = asyncHandler(async (req, res) => {
-  const { buffer, filename } = await kitService.generateKitPdf(
+  const { buffer, filename, contentType } = await kitService.generateKitPdf(
     req.params.kitId,
     req.query.doc || 'proposal',
     req.user
   );
-  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Type', contentType || 'application/pdf');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${encodeURIComponent(filename)}"`

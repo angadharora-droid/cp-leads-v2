@@ -761,7 +761,7 @@ function KitsSection({ lead }) {
           <EmptyState
             icon={FileText}
             title="No kits yet"
-            description="Create an event kit (proposal + confirmation contract) or a corporate rate kit, generate the PDF, email it, and upload the signed confirmation."
+            description="Create an event kit (proposal + confirmation contract) or a corporate rate kit, generate the document, email it, and upload the signed confirmation."
           />
         ) : (
           <div className="space-y-2">
