@@ -10,6 +10,8 @@ import {
   refreshExpiryDate,
 } from '../utils/tokens.js';
 import { writeAudit } from '../utils/audit.js';
+import { passwordPolicyError } from '../utils/passwordPolicy.js';
+import { phoneKey } from '../utils/phone.js';
 import User from '../models/User.js';
 import RefreshToken from '../models/RefreshToken.js';
 
@@ -54,13 +56,33 @@ async function createRefreshTokenRecord({ user, family, req }) {
 }
 
 /**
- * Authenticate a user with email + password.
+ * Resolve the account a login identifier refers to.
+ *  - Contains "@": treated as an email; matches any user (existing behavior).
+ *  - Otherwise: treated as a phone number and matched ONLY against admin
+ *    accounts, comparing the last 10 digits so formatting and country codes
+ *    are tolerated. Other roles must sign in with their email.
+ */
+async function findUserForLogin(identifier) {
+  if (identifier.includes('@')) {
+    return User.findOne({ email: identifier });
+  }
+
+  const key = phoneKey(identifier);
+  if (!key) return null;
+
+  const admins = await User.find({ role: 'admin', phone: { $ne: null } });
+  return admins.find((admin) => phoneKey(admin.phone) === key) || null;
+}
+
+/**
+ * Authenticate a user with identifier (email, or phone for admins) + password.
  * On success: update lastLoginAt, mint access token + a fresh refresh-token family.
  * Returns { user, accessToken, refreshToken } where refreshToken is the RAW value
  * the controller must place in the cph_rt cookie.
  */
-export async function login({ email, password, req }) {
-  const user = await User.findOne({ email });
+export async function login({ identifier, password, req }) {
+  const method = identifier.includes('@') ? 'email' : 'phone';
+  const user = await findUserForLogin(identifier);
 
   if (!user || !user.isActive) {
     await writeAudit({
@@ -69,10 +91,10 @@ export async function login({ email, password, req }) {
       action: 'login_failed',
       entityType: 'User',
       entityId: user?._id,
-      summary: `Failed login attempt for ${email}`,
-      meta: { email, reason: !user ? 'no_such_user' : 'inactive' },
+      summary: `Failed login attempt for ${identifier}`,
+      meta: { identifier, method, reason: !user ? 'no_such_user' : 'inactive' },
     });
-    throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+    throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
   }
 
   const passwordOk = await user.comparePassword(password);
@@ -83,10 +105,10 @@ export async function login({ email, password, req }) {
       action: 'login_failed',
       entityType: 'User',
       entityId: user._id,
-      summary: `Failed login attempt for ${email}`,
-      meta: { email, reason: 'bad_password' },
+      summary: `Failed login attempt for ${identifier}`,
+      meta: { identifier, method, reason: 'bad_password' },
     });
-    throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+    throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
   }
 
   user.lastLoginAt = new Date();
@@ -242,6 +264,13 @@ export async function changePassword({ user, currentPassword, newPassword, req }
       400,
       'INVALID_CURRENT_PASSWORD'
     );
+  }
+
+  // Role-aware rule: admins may use a 4/6-digit PIN or an 8+ char password;
+  // everyone else needs an 8+ char password.
+  const policyMessage = passwordPolicyError(newPassword, fresh.role);
+  if (policyMessage) {
+    throw new AppError(policyMessage, 400, 'PASSWORD_POLICY');
   }
 
   fresh.passwordHash = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);

@@ -15,6 +15,9 @@ const userSchema = new Schema(
       index: true,
     },
     passwordHash: { type: String, required: true },
+    // Optional contact number; lets admins sign in by phone (matched on the
+    // last 10 digits, so stored formatting/country code doesn't matter).
+    phone: { type: String, trim: true, default: null },
     role: {
       type: String,
       enum: ['admin', 'sales_exec'],

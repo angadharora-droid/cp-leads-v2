@@ -96,8 +96,9 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
+  // `identifier` is an email for any user, or a phone number for admins.
+  const login = useCallback(async (identifier, password) => {
+    const res = await api.post('/auth/login', { identifier, password });
     const {
       accessToken,
       refreshToken,

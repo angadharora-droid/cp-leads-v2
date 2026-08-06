@@ -59,28 +59,68 @@ const ROLE_LABELS = {
 
 /* ----------------------------- Validation ------------------------------ */
 
-const createUserSchema = z.object({
-  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(120, 'Name is too long'),
-  email: z.string().trim().toLowerCase().email('A valid email is required'),
-  password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters')
-    .max(128, 'Password is too long'),
-  role: z.enum(['admin', 'sales_exec']),
-});
+// Mirrors the server rule: admins may use a 4/6-digit PIN or an 8+ char
+// password; every other role needs an 8+ char text password.
+function passwordIssueForRole(password, role) {
+  if (password.length > 128) return 'Password is too long';
+  if (role === 'admin') {
+    return /^(\d{4}|\d{6})$/.test(password) || password.length >= 8
+      ? null
+      : 'Admin passwords must be a 4-digit PIN, a 6-digit PIN, or at least 8 characters';
+  }
+  return password.length >= 8 ? null : 'Password must be at least 8 characters';
+}
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .refine(
+    (v) =>
+      v === '' ||
+      (/^\+?[\d\s\-().]+$/.test(v) && v.replace(/\D/g, '').length >= 10),
+    'Enter a valid phone number with at least 10 digits'
+  );
+
+const createUserSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Name must be at least 2 characters').max(120, 'Name is too long'),
+    email: z.string().trim().toLowerCase().email('A valid email is required'),
+    password: z.string().min(1, 'Password is required'),
+    role: z.enum(['admin', 'sales_exec']),
+    phone: phoneSchema,
+  })
+  .superRefine((data, ctx) => {
+    const message = passwordIssueForRole(data.password, data.role);
+    if (message) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message });
+    }
+  });
 
 const editUserSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(120, 'Name is too long'),
   role: z.enum(['admin', 'sales_exec']),
   isActive: z.enum(['true', 'false']),
+  phone: phoneSchema,
 });
 
-const resetPasswordSchema = z.object({
-  newPassword: z
-    .string()
-    .min(6, 'Password must be at least 6 characters')
-    .max(128, 'Password is too long'),
-});
+// The target's role rides along as a hidden field so one static schema can
+// apply the right rule for whichever user the dialog is open for.
+const resetPasswordSchema = z
+  .object({
+    role: z.enum(['admin', 'sales_exec']),
+    newPassword: z.string().min(1, 'Password is required'),
+  })
+  .superRefine((data, ctx) => {
+    const message = passwordIssueForRole(data.newPassword, data.role);
+    if (message) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newPassword'], message });
+    }
+  });
+
+const PASSWORD_HINTS = {
+  admin: 'PIN (4 or 6 digits) or password (8+ characters)',
+  sales_exec: 'At least 8 characters',
+};
 
 /* ------------------------------ Sub-forms ------------------------------ */
 
@@ -94,14 +134,14 @@ function CreateUserDialog({ open, onOpenChange, onCreated }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(createUserSchema),
-    defaultValues: { name: '', email: '', password: '', role: 'sales_exec' },
+    defaultValues: { name: '', email: '', password: '', role: 'sales_exec', phone: '' },
   });
 
   const roleValue = watch('role');
 
   useEffect(() => {
     if (open) {
-      reset({ name: '', email: '', password: '', role: 'sales_exec' });
+      reset({ name: '', email: '', password: '', role: 'sales_exec', phone: '' });
     }
   }, [open, reset]);
 
@@ -151,12 +191,31 @@ function CreateUserDialog({ open, onOpenChange, onCreated }) {
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="create-phone">Phone number (optional)</Label>
+            <Input
+              id="create-phone"
+              type="tel"
+              autoComplete="off"
+              placeholder="+91 98765 43210"
+              {...register('phone')}
+            />
+            {roleValue === 'admin' ? (
+              <p className="text-xs text-muted-foreground">
+                Admins can sign in with their phone number.
+              </p>
+            ) : null}
+            {errors.phone ? (
+              <p className="text-xs text-destructive">{errors.phone.message}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="create-password">Temporary password</Label>
             <Input
               id="create-password"
               type="password"
               autoComplete="new-password"
-              placeholder="At least 6 characters"
+              placeholder={PASSWORD_HINTS[roleValue] || PASSWORD_HINTS.sales_exec}
               {...register('password')}
             />
             {errors.password ? (
@@ -215,7 +274,7 @@ function EditUserDialog({ open, onOpenChange, user, onSaved }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(editUserSchema),
-    defaultValues: { name: '', role: 'sales_exec', isActive: 'true' },
+    defaultValues: { name: '', role: 'sales_exec', isActive: 'true', phone: '' },
   });
 
   const roleValue = watch('role');
@@ -227,6 +286,7 @@ function EditUserDialog({ open, onOpenChange, user, onSaved }) {
         name: user.name || '',
         role: user.role || 'sales_exec',
         isActive: user.isActive ? 'true' : 'false',
+        phone: user.phone || '',
       });
     }
   }, [open, user, reset]);
@@ -237,6 +297,7 @@ function EditUserDialog({ open, onOpenChange, user, onSaved }) {
       name: values.name,
       role: values.role,
       isActive: values.isActive === 'true',
+      phone: values.phone, // '' clears the number on the server
     };
     try {
       const res = await api.patch(`/users/${user._id}`, payload);
@@ -263,6 +324,25 @@ function EditUserDialog({ open, onOpenChange, user, onSaved }) {
             <Input id="edit-name" {...register('name')} />
             {errors.name ? (
               <p className="text-xs text-destructive">{errors.name.message}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-phone">Phone number (optional)</Label>
+            <Input
+              id="edit-phone"
+              type="tel"
+              autoComplete="off"
+              placeholder="+91 98765 43210"
+              {...register('phone')}
+            />
+            {roleValue === 'admin' ? (
+              <p className="text-xs text-muted-foreground">
+                Admins can sign in with their phone number.
+              </p>
+            ) : null}
+            {errors.phone ? (
+              <p className="text-xs text-destructive">{errors.phone.message}</p>
             ) : null}
           </div>
 
@@ -330,12 +410,12 @@ function ResetPasswordDialog({ open, onOpenChange, user, onDone }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { newPassword: '' },
+    defaultValues: { role: 'sales_exec', newPassword: '' },
   });
 
   useEffect(() => {
-    if (open) reset({ newPassword: '' });
-  }, [open, reset]);
+    if (open) reset({ role: user?.role || 'sales_exec', newPassword: '' });
+  }, [open, user, reset]);
 
   async function onSubmit(values) {
     if (!user) return;
@@ -368,9 +448,14 @@ function ResetPasswordDialog({ open, onOpenChange, user, onDone }) {
               id="reset-password"
               type="password"
               autoComplete="new-password"
-              placeholder="At least 6 characters"
+              placeholder={PASSWORD_HINTS[user?.role] || PASSWORD_HINTS.sales_exec}
               {...register('newPassword')}
             />
+            {user?.role === 'admin' ? (
+              <p className="text-xs text-muted-foreground">
+                Admins may use a 4 or 6-digit PIN instead of a password.
+              </p>
+            ) : null}
             {errors.newPassword ? (
               <p className="text-xs text-destructive">{errors.newPassword.message}</p>
             ) : null}
@@ -475,7 +560,7 @@ export default function UsersPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email"
+              placeholder="Search by name, email or phone"
               className="pl-9"
             />
           </div>
@@ -552,7 +637,12 @@ export default function UsersPage() {
                         ) : null}
                       </span>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <div>{u.email}</div>
+                      {u.phone ? (
+                        <div className="text-xs">{u.phone}</div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>
                       {u.role === 'admin' ? (
                         <Badge variant="accent" className="gap-1">

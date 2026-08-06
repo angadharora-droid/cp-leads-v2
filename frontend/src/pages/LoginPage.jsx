@@ -21,11 +21,31 @@ import {
 } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 
+const PHONE_SHAPE = /^\+?[\d\s\-().]+$/;
+
 const loginSchema = z.object({
-  email: z
+  identifier: z
     .string()
-    .min(1, 'Email is required')
-    .email('Enter a valid email address'),
+    .trim()
+    .min(1, 'Email or phone number is required')
+    .superRefine((value, ctx) => {
+      if (value.includes('@')) {
+        if (!z.string().email().safeParse(value).success) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Enter a valid email address',
+          });
+        }
+      } else if (
+        !PHONE_SHAPE.test(value) ||
+        value.replace(/\D/g, '').length < 10
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Enter a valid email address or phone number',
+        });
+      }
+    }),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -44,7 +64,7 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { identifier: '', password: '' },
   });
 
   // While the AuthProvider is performing its silent refresh on mount, show a spinner.
@@ -63,7 +83,7 @@ export default function LoginPage() {
 
   const onSubmit = async (values) => {
     try {
-      await login(values.email.trim(), values.password);
+      await login(values.identifier.trim(), values.password);
       toast.success('Welcome back');
       navigate(from, { replace: true });
     } catch (error) {
@@ -110,19 +130,22 @@ export default function LoginPage() {
 
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="identifier">Email or phone number</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  aria-invalid={!!errors.email}
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="you@example.com or 98765 43210"
+                  aria-invalid={!!errors.identifier}
                   disabled={isSubmitting}
-                  {...register('email')}
+                  {...register('identifier')}
                 />
-                {errors.email ? (
+                <p className="text-xs text-muted-foreground">
+                  Phone number sign-in is available for administrators only.
+                </p>
+                {errors.identifier ? (
                   <p className="text-sm text-destructive">
-                    {errors.email.message}
+                    {errors.identifier.message}
                   </p>
                 ) : null}
               </div>

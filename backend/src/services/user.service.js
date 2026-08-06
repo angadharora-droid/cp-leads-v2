@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import env from '../config/env.js';
 import { AppError } from '../utils/apiResponse.js';
 import { writeAudit } from '../utils/audit.js';
+import { passwordPolicyError } from '../utils/passwordPolicy.js';
+import { phoneKey } from '../utils/phone.js';
 
 /**
  * Hash a plaintext password using the configured bcrypt cost.
@@ -29,7 +31,7 @@ export async function listUsers({ q, role, isActive } = {}) {
 
   if (q && q.trim()) {
     const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    query.$or = [{ name: rx }, { email: rx }];
+    query.$or = [{ name: rx }, { email: rx }, { phone: rx }];
   }
 
   return User.find(query).sort({ createdAt: -1 });
@@ -49,17 +51,48 @@ export async function getUserById(id) {
 }
 
 /**
- * Create a new user. Enforces unique email.
- * @param {object} input - { name, email, password, role }
+ * Throw 409 if another user already holds a phone number matching `phone`
+ * on the last-10-digits comparison used for login.
+ */
+async function assertPhoneAvailable(phone, excludeId) {
+  const key = phoneKey(phone);
+  if (!key) return;
+
+  const criteria = { phone: { $ne: null } };
+  if (excludeId) criteria._id = { $ne: excludeId };
+
+  const others = await User.find(criteria).select('phone');
+  if (others.some((u) => phoneKey(u.phone) === key)) {
+    throw new AppError(
+      'A user with this phone number already exists',
+      409,
+      'PHONE_TAKEN'
+    );
+  }
+}
+
+/**
+ * Create a new user. Enforces unique email (and phone, when provided) plus
+ * the role-aware password policy for the account being created.
+ * @param {object} input - { name, email, password, role, phone }
  * @param {object} req - express request for audit context.
  * @returns {Promise<object>} created user document.
  */
 export async function createUser(input, req) {
-  const { name, email, password, role } = input;
+  const { name, email, password, role, phone } = input;
+
+  const policyMessage = passwordPolicyError(password, role || 'sales_exec');
+  if (policyMessage) {
+    throw new AppError(policyMessage, 400, 'PASSWORD_POLICY');
+  }
 
   const existing = await User.findOne({ email });
   if (existing) {
     throw new AppError('A user with this email already exists', 409, 'EMAIL_TAKEN');
+  }
+
+  if (phone) {
+    await assertPhoneAvailable(phone);
   }
 
   const passwordHash = await hashPassword(password);
@@ -69,6 +102,7 @@ export async function createUser(input, req) {
     email,
     passwordHash,
     role: role || 'sales_exec',
+    phone: phone || null,
   });
 
   await writeAudit({
@@ -120,6 +154,14 @@ export async function updateUser(id, updates, req) {
     changes.isActive = updates.isActive;
   }
 
+  // phone is null (clear) or a validated string; undefined means "unchanged".
+  if (updates.phone !== undefined && updates.phone !== (user.phone || null)) {
+    if (updates.phone) {
+      await assertPhoneAvailable(updates.phone, user._id);
+    }
+    changes.phone = updates.phone;
+  }
+
   if (Object.keys(changes).length === 0) {
     return user;
   }
@@ -140,7 +182,8 @@ export async function updateUser(id, updates, req) {
 }
 
 /**
- * Reset (admin override) a user's password.
+ * Reset (admin override) a user's password. The password must satisfy the
+ * policy for the TARGET account's role (PINs are admin-only).
  * @param {string} id
  * @param {string} newPassword
  * @param {object} req
@@ -148,6 +191,11 @@ export async function updateUser(id, updates, req) {
  */
 export async function resetUserPassword(id, newPassword, req) {
   const user = await getUserById(id);
+
+  const policyMessage = passwordPolicyError(newPassword, user.role);
+  if (policyMessage) {
+    throw new AppError(policyMessage, 400, 'PASSWORD_POLICY');
+  }
 
   user.passwordHash = await hashPassword(newPassword);
   await user.save();

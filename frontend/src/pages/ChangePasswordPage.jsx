@@ -19,19 +19,49 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
+
+// Admins may pick a PIN instead of a text password; other roles are locked to
+// 'text'. The mode lives in the form values so a single static schema can
+// validate every variant (no resolver swapping on mode change).
+const MODES = {
+  text: { label: 'Text password' },
+  pin4: { label: '4-digit PIN', length: 4 },
+  pin6: { label: '6-digit PIN', length: 6 },
+};
 
 const changePasswordSchema = z
   .object({
+    mode: z.enum(['text', 'pin4', 'pin6']),
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z
-      .string()
-      .min(8, 'New password must be at least 8 characters'),
+    newPassword: z.string().min(1, 'New password is required'),
     confirm: z.string().min(1, 'Please confirm your new password'),
+  })
+  .superRefine((data, ctx) => {
+    const issue = (message) =>
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['newPassword'],
+        message,
+      });
+    if (data.mode === 'pin4' && !/^\d{4}$/.test(data.newPassword)) {
+      issue('PIN must be exactly 4 digits');
+    } else if (data.mode === 'pin6' && !/^\d{6}$/.test(data.newPassword)) {
+      issue('PIN must be exactly 6 digits');
+    } else if (data.mode === 'text' && data.newPassword.length < 8) {
+      issue('New password must be at least 8 characters');
+    }
   })
   .refine((data) => data.newPassword === data.confirm, {
     path: ['confirm'],
-    message: 'Passwords do not match',
+    message: 'Entries do not match',
   })
   .refine((data) => data.newPassword !== data.currentPassword, {
     path: ['newPassword'],
@@ -45,6 +75,7 @@ function PasswordField({
   registration,
   error,
   disabled,
+  pinLength,
 }) {
   const [show, setShow] = useState(false);
   return (
@@ -55,7 +86,10 @@ function PasswordField({
           id={id}
           type={show ? 'text' : 'password'}
           autoComplete={autoComplete}
-          placeholder="••••••••"
+          placeholder={pinLength ? '•'.repeat(pinLength) : '••••••••'}
+          inputMode={pinLength ? 'numeric' : undefined}
+          pattern={pinLength ? '[0-9]*' : undefined}
+          maxLength={pinLength || 128}
           className="pr-10"
           aria-invalid={!!error}
           disabled={disabled}
@@ -81,24 +115,45 @@ function PasswordField({
 }
 
 export default function ChangePasswordPage() {
-  const { changePassword } = useAuth();
+  const { user, changePassword } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin';
 
   const {
     register,
     handleSubmit,
     reset,
     setError,
+    setValue,
+    clearErrors,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(changePasswordSchema),
-    defaultValues: { currentPassword: '', newPassword: '', confirm: '' },
+    defaultValues: {
+      mode: 'text',
+      currentPassword: '',
+      newPassword: '',
+      confirm: '',
+    },
   });
+
+  const mode = watch('mode');
+  const pinLength = MODES[mode]?.length;
+  const noun = pinLength ? 'PIN' : 'password';
+
+  function handleModeChange(nextMode) {
+    setValue('mode', nextMode);
+    // A half-typed value from the previous mode would fail the new rules.
+    setValue('newPassword', '');
+    setValue('confirm', '');
+    clearErrors(['newPassword', 'confirm']);
+  }
 
   const onSubmit = async (values) => {
     try {
       await changePassword(values.currentPassword, values.newPassword);
-      toast.success('Password changed successfully');
+      toast.success(`${pinLength ? 'PIN' : 'Password'} changed successfully`);
       reset();
       navigate('/');
     } catch (error) {
@@ -126,7 +181,9 @@ export default function ChangePasswordPage() {
               <div>
                 <CardTitle>Account security</CardTitle>
                 <CardDescription>
-                  Choose a strong password you don&apos;t use elsewhere.
+                  {isAdmin
+                    ? 'Use a strong password, or a PIN for quick sign-in.'
+                    : "Choose a strong password you don't use elsewhere."}
                 </CardDescription>
               </div>
             </div>
@@ -141,21 +198,47 @@ export default function ChangePasswordPage() {
               error={errors.currentPassword}
               disabled={isSubmitting}
             />
+
+            {isAdmin ? (
+              <div className="space-y-2">
+                <Label htmlFor="password-mode">New password type</Label>
+                <Select
+                  value={mode}
+                  onValueChange={handleModeChange}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="password-mode">
+                    <SelectValue placeholder="Select a type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Text password</SelectItem>
+                    <SelectItem value="pin4">4-digit PIN</SelectItem>
+                    <SelectItem value="pin6">6-digit PIN</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  PINs are available to administrators only.
+                </p>
+              </div>
+            ) : null}
+
             <PasswordField
               id="newPassword"
-              label="New password"
+              label={pinLength ? `New ${pinLength}-digit PIN` : 'New password'}
               autoComplete="new-password"
               registration={register('newPassword')}
               error={errors.newPassword}
               disabled={isSubmitting}
+              pinLength={pinLength}
             />
             <PasswordField
               id="confirm"
-              label="Confirm new password"
+              label={`Confirm new ${noun}`}
               autoComplete="new-password"
               registration={register('confirm')}
               error={errors.confirm}
               disabled={isSubmitting}
+              pinLength={pinLength}
             />
           </CardContent>
 
@@ -180,7 +263,7 @@ export default function ChangePasswordPage() {
                   Updating…
                 </>
               ) : (
-                'Update password'
+                `Update ${noun}`
               )}
             </Button>
           </CardFooter>

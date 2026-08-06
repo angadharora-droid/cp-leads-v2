@@ -22,6 +22,8 @@ import AuditLog from './models/AuditLog.js';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cph.local';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@123';
 const ADMIN_NAME = process.env.ADMIN_NAME || 'CPH Admin';
+// Optional: lets the admin sign in with phone number + password/PIN.
+const ADMIN_PHONE = process.env.ADMIN_PHONE || '';
 
 async function run() {
   await connectDB();
@@ -43,6 +45,7 @@ async function run() {
     passwordHash,
     role: 'admin',
     isActive: true,
+    phone: ADMIN_PHONE || null,
   });
 
   console.log('\n========================================');
@@ -52,6 +55,7 @@ async function run() {
   console.log('');
   console.log('  Admin');
   console.log(`    email:    ${ADMIN_EMAIL}`);
+  if (ADMIN_PHONE) console.log(`    phone:    ${ADMIN_PHONE}`);
   console.log(`    password: ${ADMIN_PASSWORD}`);
   console.log('');
   console.log('  Users: 1   Leads: 0');
