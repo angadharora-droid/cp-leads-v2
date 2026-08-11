@@ -80,6 +80,24 @@ export const closeFollowUp = asyncHandler(async (req, res) => {
   return sendOk(res, { lead });
 });
 
+/* ------------------------- Visit reports ------------------------- */
+
+export const addVisitReport = asyncHandler(async (req, res) => {
+  const lead = await activityService.addVisitReport(
+    req.params.id,
+    {
+      visitDate: req.body.visitDate,
+      note: req.body.note,
+      followUpDate: req.body.followUpDate,
+      followUpNote: req.body.followUpNote,
+      actionPoint: req.body.actionPoint,
+    },
+    req.user,
+    req
+  );
+  return sendOk(res, { lead }, 201);
+});
+
 /* -------------------------- Instructions ------------------------- */
 
 export const issueInstruction = asyncHandler(async (req, res) => {
@@ -110,6 +128,7 @@ export default {
   clearActionPoint,
   scheduleFollowUp,
   closeFollowUp,
+  addVisitReport,
   issueInstruction,
   completeInstruction,
 };

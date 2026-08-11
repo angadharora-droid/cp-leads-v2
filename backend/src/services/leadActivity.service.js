@@ -253,6 +253,71 @@ export async function closeFollowUp(leadId, fuId, closingNote, actor, req) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Visit reports                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function addVisitReport(leadId, payload, actor, req) {
+  const lead = await loadLeadScoped(leadId, actor);
+  const actorUser = actor.user;
+  const { visitDate, note, followUpDate, followUpNote, actionPoint } = payload;
+
+  lead.visitReports.push({
+    visitDate: new Date(visitDate),
+    note,
+    followUpDate: followUpDate ? new Date(followUpDate) : undefined,
+    followUpNote: followUpNote || undefined,
+    actionPoint: actionPoint || 'No action',
+    createdBy: actor.id,
+    createdByName: actorUser?.name,
+    createdAt: new Date(),
+  });
+
+  // Spin the visit's outcomes into the existing workflows so they surface on
+  // the follow-ups page and the action-points list.
+  if (followUpDate) {
+    lead.followUps.push({
+      dueDate: new Date(followUpDate),
+      note: followUpNote || undefined,
+      status: 'open',
+      createdBy: actor.id,
+      createdByName: actorUser?.name,
+      createdAt: new Date(),
+    });
+  }
+  if (actionPoint && actionPoint !== 'No action') {
+    lead.actionPoints.push({
+      text: actionPoint,
+      createdBy: actor.id,
+      createdByName: actorUser?.name,
+      createdAt: new Date(),
+      cleared: false,
+    });
+  }
+
+  lead.history.push({
+    type: 'visit_report_added',
+    summary: `Visit recorded: ${String(note).slice(0, 140)}`,
+    at: new Date(),
+    by: actor.id,
+    byName: actorUser?.name,
+  });
+  await lead.save();
+  const vr = lead.visitReports[lead.visitReports.length - 1];
+
+  await writeAudit({
+    req,
+    actor: actorUser,
+    action: 'visit_report_added',
+    entityType: 'Lead',
+    entityId: lead._id,
+    summary: `Visit report added to ${lead.reference}`,
+    meta: { visitReportId: String(vr._id) },
+  });
+
+  return returnPopulated(lead);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Instructions                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -328,6 +393,7 @@ export default {
   clearActionPoint,
   scheduleFollowUp,
   closeFollowUp,
+  addVisitReport,
   issueInstruction,
   completeInstruction,
 };

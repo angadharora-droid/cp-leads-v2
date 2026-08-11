@@ -19,6 +19,7 @@ import {
   followUpSchema,
   closeFollowUpSchema,
   instructionSchema,
+  visitReportSchema,
 } from '../validation/lead.validation.js';
 
 const router = Router();
@@ -100,6 +101,14 @@ router.post(
   '/:id/follow-ups/:fuId/close',
   validate(closeFollowUpSchema),
   activityController.closeFollowUp
+);
+
+/* ------------------------------ Visit reports --------------------------- */
+
+router.post(
+  '/:id/visit-reports',
+  validate(visitReportSchema),
+  activityController.addVisitReport
 );
 
 /* --------------------------------- Kits -------------------------------- */

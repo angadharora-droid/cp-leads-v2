@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 const LEAD_STATUSES = ['Non Contracted', 'Contracted'];
 const CONTACTED_FOR_OPTIONS = ['CPA', 'CPH', 'CPNM'];
+const VISIT_ACTION_OPTIONS = [
+  'No action',
+  'Send proposal',
+  'Send rates',
+  'Send agreement',
+  'Schedule meeting',
+  'Follow up call',
+  'Collect signed confirmation',
+];
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 const objectId = z
@@ -106,6 +115,14 @@ export const instructionSchema = z.object({
   text: trimmedString(2000).min(1, 'Instruction text is required'),
 });
 
+export const visitReportSchema = z.object({
+  visitDate: dateField,
+  note: trimmedString(5000).min(1, 'Visit note is required'),
+  followUpDate: dateField.optional().or(z.literal('')),
+  followUpNote: optionalText(2000),
+  actionPoint: z.enum(VISIT_ACTION_OPTIONS).optional(),
+});
+
 export default {
   createLeadSchema,
   updateLeadSchema,
@@ -116,4 +133,5 @@ export default {
   followUpSchema,
   closeFollowUpSchema,
   instructionSchema,
+  visitReportSchema,
 };

@@ -24,6 +24,7 @@ import {
   Save,
   Package,
   FileText,
+  NotebookPen,
 } from 'lucide-react';
 
 import api, { getErrorMessage } from '@/lib/api';
@@ -77,6 +78,17 @@ import {
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */
+
+// Mirrors VISIT_ACTION_OPTIONS in backend/src/models/Lead.js.
+const VISIT_ACTION_OPTIONS = [
+  'No action',
+  'Send proposal',
+  'Send rates',
+  'Send agreement',
+  'Schedule meeting',
+  'Follow up call',
+  'Collect signed confirmation',
+];
 
 /** Read the populated lead out of an API response envelope. */
 function pickLead(res) {
@@ -213,6 +225,14 @@ export default function LeadDetailPage() {
       <OverviewTab lead={lead} />
 
       <KitsSection lead={lead} />
+
+      <SectionCard
+        icon={NotebookPen}
+        title="Visit Report"
+        count={(lead.visitReports || []).length}
+      >
+        <VisitReportsTab lead={lead} mutate={mutate} />
+      </SectionCard>
 
       <SectionCard
         icon={ListChecks}
@@ -1385,6 +1405,166 @@ function FollowUpsTab({ lead, mutate }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Visit reports                                                                */
+/* -------------------------------------------------------------------------- */
+
+function VisitReportsTab({ lead, mutate }) {
+  const [visitDate, setVisitDate] = useState(todayISO());
+  const [note, setNote] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpNote, setFollowUpNote] = useState('');
+  const [actionPoint, setActionPoint] = useState('No action');
+  const [adding, setAdding] = useState(false);
+
+  const reports = useMemo(
+    () =>
+      [...(lead.visitReports || [])].sort(
+        (a, b) =>
+          new Date(b.visitDate || 0).getTime() -
+          new Date(a.visitDate || 0).getTime()
+      ),
+    [lead.visitReports]
+  );
+
+  async function handleAdd() {
+    if (!visitDate) {
+      toast.error('Pick a visit date');
+      return;
+    }
+    if (!note.trim()) {
+      toast.error('Describe what happened in the visit');
+      return;
+    }
+    setAdding(true);
+    try {
+      await mutate(
+        api.post(`/leads/${lead._id}/visit-reports`, {
+          visitDate,
+          note: note.trim(),
+          followUpDate: followUpDate || undefined,
+          followUpNote: followUpNote.trim() || undefined,
+          actionPoint,
+        }),
+        'Visit report added'
+      );
+      setVisitDate(todayISO());
+      setNote('');
+      setFollowUpDate('');
+      setFollowUpNote('');
+      setActionPoint('No action');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to add visit report'));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionAdd onSubmit={handleAdd} submitLabel="Add visit report" disabled={adding}>
+        <div className="space-y-2">
+          <Label htmlFor="vr-date">Visit date</Label>
+          <Input
+            id="vr-date"
+            type="date"
+            value={visitDate}
+            max={todayISO()}
+            onChange={(e) => setVisitDate(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="vr-note">Visit note</Label>
+          <Textarea
+            id="vr-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What happened in the meeting?..."
+            rows={3}
+          />
+        </div>
+        <div className="space-y-3 rounded-md border bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">
+            Based on this visit — schedule the next follow-up and set the action
+            point (both optional).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="vr-fu-date">Next follow-up date</Label>
+              <Input
+                id="vr-fu-date"
+                type="date"
+                value={followUpDate}
+                min={todayISO()}
+                onChange={(e) => setFollowUpDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vr-fu-note">Follow-up note</Label>
+              <Input
+                id="vr-fu-note"
+                value={followUpNote}
+                onChange={(e) => setFollowUpNote(e.target.value)}
+                placeholder="Why follow up?..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vr-action">Action point</Label>
+              <Select value={actionPoint} onValueChange={setActionPoint}>
+                <SelectTrigger id="vr-action">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIT_ACTION_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </SectionAdd>
+
+      {reports.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No visits recorded yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {reports.map((vr) => (
+            <div key={String(vr._id)} className="rounded-lg border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  {formatDate(vr.visitDate)}
+                </span>
+                {vr.actionPoint && vr.actionPoint !== 'No action' ? (
+                  <Badge variant="accent">{vr.actionPoint}</Badge>
+                ) : null}
+                {vr.followUpDate ? (
+                  <Badge variant="secondary">
+                    Next follow-up {formatDate(vr.followUpDate)}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                {vr.note}
+              </p>
+              {vr.followUpNote ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Follow-up: {vr.followUpNote}
+                </p>
+              ) : null}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Recorded by {vr.createdByName || '—'} · {formatDate(vr.createdAt)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

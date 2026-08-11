@@ -6,6 +6,16 @@ export const LEAD_STATUSES = ['Non Contracted', 'Contracted'];
 
 export const CONTACTED_FOR_OPTIONS = ['CPA', 'CPH', 'CPNM'];
 
+export const VISIT_ACTION_OPTIONS = [
+  'No action',
+  'Send proposal',
+  'Send rates',
+  'Send agreement',
+  'Schedule meeting',
+  'Follow up call',
+  'Collect signed confirmation',
+];
+
 const noteSchema = new Schema(
   {
     body: { type: String, required: true },
@@ -39,6 +49,24 @@ const followUpSchema = new Schema(
     closingNote: { type: String },
     closedAt: { type: Date },
     closedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  },
+  { _id: true }
+);
+
+const visitReportSchema = new Schema(
+  {
+    visitDate: { type: Date, required: true },
+    note: { type: String, required: true },
+    followUpDate: { type: Date },
+    followUpNote: { type: String },
+    actionPoint: {
+      type: String,
+      enum: VISIT_ACTION_OPTIONS,
+      default: 'No action',
+    },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    createdByName: { type: String },
+    createdAt: { type: Date, default: Date.now },
   },
   { _id: true }
 );
@@ -93,6 +121,7 @@ const leadSchema = new Schema(
     notes: [noteSchema],
     actionPoints: [actionPointSchema],
     followUps: [followUpSchema],
+    visitReports: [visitReportSchema],
     instructions: [instructionSchema],
     history: [historySchema],
   },
