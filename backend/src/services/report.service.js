@@ -1,23 +1,51 @@
 import ExcelJS from 'exceljs';
 import Lead from '../models/Lead.js';
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Load every lead the current user may see, fully populated for reporting.
- *
- * Scoping:
- *  - admin       -> all leads
- *  - sales_exec  -> only leads where assignedTo === self
+ * Lead-level filters: role scope + status/city/free-text search.
  */
-async function loadScopedLeads(currentUser) {
-  if (!currentUser || !currentUser.id) return [];
+function buildLeadMatch(currentUser, filters = {}) {
   const match = {};
   if (currentUser.role !== 'admin') {
     match.assignedTo = currentUser.id;
   }
-  return Lead.find(match)
-    .populate('assignedTo', 'name email')
-    .sort({ createdAt: -1 })
-    .lean();
+  if (filters.status) {
+    match.status = filters.status;
+  }
+  if (filters.city) {
+    match.city = new RegExp(escapeRegex(filters.city), 'i');
+  }
+  if (filters.q) {
+    const rx = new RegExp(escapeRegex(filters.q), 'i');
+    match.$or = [
+      { businessName: rx },
+      { reference: rx },
+      { contactPerson: rx },
+    ];
+  }
+  return match;
+}
+
+/**
+ * Date-range predicate for activity records (visits, follow-ups, actions).
+ * Bounds are inclusive; either side may be missing.
+ */
+function makeRangeCheck(filters = {}) {
+  const from = filters.from ? new Date(filters.from) : null;
+  const to = filters.to ? new Date(filters.to) : null;
+  if (to) to.setHours(23, 59, 59, 999);
+  return (value) => {
+    if (!from && !to) return true;
+    if (!value) return false;
+    const time = new Date(value).getTime();
+    if (from && time < from.getTime()) return false;
+    if (to && time > to.getTime()) return false;
+    return true;
+  };
 }
 
 function latestDate(items, field) {
@@ -40,41 +68,129 @@ function nextOpenFollowUpDate(followUps) {
 }
 
 /**
- * Overall per-lead overview for the Reports page, plus headline totals.
+ * Collect the filtered report data once; the overview endpoint and the Excel
+ * export both render from this.
+ *
+ * Lead filters (q/status/city) pick the leads; from/to narrows the activity
+ * (visits by visit date, follow-ups by due date, action points by created
+ * date). Per-lead counts and the summary reflect the narrowed activity.
  */
-export async function getReportOverview(currentUser) {
-  const leads = await loadScopedLeads(currentUser);
+export async function getReportData(currentUser, filters = {}) {
+  if (!currentUser || !currentUser.id) {
+    return { summary: null, rows: [], visits: [], followUps: [], actionPoints: [] };
+  }
 
-  const rows = leads.map((lead) => {
-    const visits = lead.visitReports || [];
-    const followUps = lead.followUps || [];
-    const actionPoints = lead.actionPoints || [];
-    return {
-      leadId: String(lead._id),
+  const leads = await Lead.find(buildLeadMatch(currentUser, filters))
+    .populate('assignedTo', 'name email')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const inRange = makeRangeCheck(filters);
+
+  const rows = [];
+  const visits = [];
+  const followUps = [];
+  const actionPoints = [];
+
+  for (const lead of leads) {
+    const leadId = String(lead._id);
+    const base = {
+      leadId,
       reference: lead.reference || '',
       businessName: lead.businessName || '',
       city: lead.city || '',
+    };
+
+    const leadVisits = (lead.visitReports || []).filter((v) =>
+      inRange(v.visitDate)
+    );
+    const leadFollowUps = (lead.followUps || []).filter((f) =>
+      inRange(f.dueDate)
+    );
+    const leadActions = (lead.actionPoints || []).filter((a) =>
+      inRange(a.createdAt)
+    );
+
+    rows.push({
+      ...base,
       status: lead.status || '',
       assignedToName: lead.assignedTo?.name || '',
+      contactPerson: lead.contactPerson || '',
+      designation: lead.designation || '',
+      mobile: lead.mobile || '',
+      email: lead.email || '',
+      businessType: lead.businessType || '',
+      contactedFor: Array.isArray(lead.contactedFor)
+        ? lead.contactedFor.join(', ')
+        : lead.contactedFor || '',
       leadDate: lead.leadDate || null,
-      visitCount: visits.length,
-      lastVisitDate: latestDate(visits, 'visitDate'),
-      openFollowUps: followUps.filter((f) => f.status === 'open').length,
-      nextFollowUpDate: nextOpenFollowUpDate(followUps),
-      openActionPoints: actionPoints.filter((a) => !a.cleared).length,
-    };
-  });
+      createdAt: lead.createdAt || null,
+      visitCount: leadVisits.length,
+      lastVisitDate: latestDate(leadVisits, 'visitDate'),
+      openFollowUps: leadFollowUps.filter((f) => f.status === 'open').length,
+      nextFollowUpDate: nextOpenFollowUpDate(leadFollowUps),
+      openActionPoints: leadActions.filter((a) => !a.cleared).length,
+    });
+
+    for (const vr of leadVisits) {
+      visits.push({
+        ...base,
+        visitReportId: vr._id ? String(vr._id) : null,
+        visitDate: vr.visitDate || null,
+        note: vr.note || '',
+        followUpDate: vr.followUpDate || null,
+        followUpNote: vr.followUpNote || '',
+        actionPoint: vr.actionPoint || 'No action',
+        createdByName: vr.createdByName || '',
+        createdAt: vr.createdAt || null,
+      });
+    }
+
+    for (const fu of leadFollowUps) {
+      followUps.push({
+        ...base,
+        followUpId: fu._id ? String(fu._id) : null,
+        dueDate: fu.dueDate || null,
+        note: fu.note || '',
+        status: fu.status || 'open',
+        closingNote: fu.closingNote || '',
+        closedAt: fu.closedAt || null,
+        createdByName: fu.createdByName || '',
+      });
+    }
+
+    for (const ap of leadActions) {
+      actionPoints.push({
+        ...base,
+        actionPointId: ap._id ? String(ap._id) : null,
+        text: ap.text || '',
+        status: ap.cleared ? 'cleared' : 'open',
+        createdByName: ap.createdByName || '',
+        createdAt: ap.createdAt || null,
+        clearedAt: ap.clearedAt || null,
+      });
+    }
+  }
+
+  const byDateDesc = (field) => (a, b) =>
+    (b[field] ? new Date(b[field]).getTime() : 0) -
+    (a[field] ? new Date(a[field]).getTime() : 0);
+  visits.sort(byDateDesc('visitDate'));
+  followUps.sort(byDateDesc('dueDate'));
+  actionPoints.sort(byDateDesc('createdAt'));
 
   const summary = {
     totalLeads: rows.length,
     contracted: rows.filter((r) => r.status === 'Contracted').length,
-    totalVisits: rows.reduce((sum, r) => sum + r.visitCount, 0),
-    openFollowUps: rows.reduce((sum, r) => sum + r.openFollowUps, 0),
-    openActionPoints: rows.reduce((sum, r) => sum + r.openActionPoints, 0),
+    totalVisits: visits.length,
+    openFollowUps: followUps.filter((f) => f.status === 'open').length,
+    openActionPoints: actionPoints.filter((a) => a.status === 'open').length,
   };
 
-  return { summary, rows };
+  return { summary, rows, visits, followUps, actionPoints };
 }
+
+/* ----------------------------- Excel rendering ---------------------------- */
 
 const HEADER_FILL = {
   type: 'pattern',
@@ -82,20 +198,16 @@ const HEADER_FILL = {
   fgColor: { argb: 'FF17766B' },
 };
 
-function styleHeader(sheet) {
-  const header = sheet.getRow(1);
-  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  header.fill = HEADER_FILL;
-  header.alignment = { vertical: 'middle' };
-  header.height = 20;
-}
-
 function addSheet(workbook, name, columns) {
   const sheet = workbook.addWorksheet(name, {
     views: [{ state: 'frozen', ySplit: 1 }],
   });
   sheet.columns = columns;
-  styleHeader(sheet);
+  const header = sheet.getRow(1);
+  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  header.fill = HEADER_FILL;
+  header.alignment = { vertical: 'middle' };
+  header.height = 20;
   return sheet;
 }
 
@@ -107,18 +219,20 @@ function asDate(value) {
 }
 
 /**
- * Build the overall .xlsx report: one workbook with a sheet per aspect —
- * Leads, Visit Reports, Follow-ups, Action Points.
+ * Overall .xlsx report honoring the same filters as the overview: one
+ * workbook with Leads, Visit Reports, Follow-ups and Action Points sheets.
  * Returns { buffer, filename, contentType } for the download controller.
  */
-export async function generateOverallExcel(currentUser) {
-  const leads = await loadScopedLeads(currentUser);
+export async function generateOverallExcel(currentUser, filters = {}) {
+  const { rows, visits, followUps, actionPoints } = await getReportData(
+    currentUser,
+    filters
+  );
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Centre Point Leads CRM';
   workbook.created = new Date();
 
-  /* ------------------------------- Leads ------------------------------- */
   const leadSheet = addSheet(workbook, 'Leads', [
     { header: 'Reference', key: 'reference', width: 22 },
     { header: 'Business Name', key: 'businessName', width: 30 },
@@ -131,14 +245,24 @@ export async function generateOverallExcel(currentUser) {
     { header: 'Contacted For', key: 'contactedFor', width: 15 },
     { header: 'Lead Date', key: 'leadDate', width: 14, style: DATE_FMT },
     { header: 'Status', key: 'status', width: 16 },
-    { header: 'Assigned To', key: 'assignedTo', width: 20 },
-    { header: 'Visits', key: 'visits', width: 8 },
+    { header: 'Assigned To', key: 'assignedToName', width: 20 },
+    { header: 'Visits', key: 'visitCount', width: 8 },
+    { header: 'Last Visit', key: 'lastVisitDate', width: 14, style: DATE_FMT },
     { header: 'Open Follow-ups', key: 'openFollowUps', width: 15 },
+    { header: 'Next Follow-up', key: 'nextFollowUpDate', width: 15, style: DATE_FMT },
     { header: 'Open Action Points', key: 'openActionPoints', width: 17 },
     { header: 'Created At', key: 'createdAt', width: 18, style: DATETIME_FMT },
   ]);
+  for (const row of rows) {
+    leadSheet.addRow({
+      ...row,
+      leadDate: asDate(row.leadDate),
+      lastVisitDate: asDate(row.lastVisitDate),
+      nextFollowUpDate: asDate(row.nextFollowUpDate),
+      createdAt: asDate(row.createdAt),
+    });
+  }
 
-  /* ---------------------------- Visit reports --------------------------- */
   const visitSheet = addSheet(workbook, 'Visit Reports', [
     { header: 'Visit Date', key: 'visitDate', width: 14, style: DATE_FMT },
     { header: 'Lead Reference', key: 'reference', width: 22 },
@@ -151,8 +275,21 @@ export async function generateOverallExcel(currentUser) {
     { header: 'Recorded By', key: 'createdByName', width: 20 },
     { header: 'Recorded At', key: 'createdAt', width: 18, style: DATETIME_FMT },
   ]);
+  for (const row of visits) {
+    const added = visitSheet.addRow({
+      ...row,
+      visitDate: asDate(row.visitDate),
+      followUpDate: asDate(row.followUpDate),
+      createdAt: asDate(row.createdAt),
+    });
+    added.alignment = { vertical: 'top' };
+    added.getCell('note').alignment = { vertical: 'top', wrapText: true };
+    added.getCell('followUpNote').alignment = {
+      vertical: 'top',
+      wrapText: true,
+    };
+  }
 
-  /* ------------------------------ Follow-ups ---------------------------- */
   const followUpSheet = addSheet(workbook, 'Follow-ups', [
     { header: 'Due Date', key: 'dueDate', width: 14, style: DATE_FMT },
     { header: 'Lead Reference', key: 'reference', width: 22 },
@@ -163,8 +300,16 @@ export async function generateOverallExcel(currentUser) {
     { header: 'Closed At', key: 'closedAt', width: 14, style: DATE_FMT },
     { header: 'Scheduled By', key: 'createdByName', width: 20 },
   ]);
+  for (const row of followUps) {
+    const added = followUpSheet.addRow({
+      ...row,
+      dueDate: asDate(row.dueDate),
+      closedAt: asDate(row.closedAt),
+    });
+    added.getCell('note').alignment = { wrapText: true };
+    added.getCell('closingNote').alignment = { wrapText: true };
+  }
 
-  /* ----------------------------- Action points -------------------------- */
   const actionSheet = addSheet(workbook, 'Action Points', [
     { header: 'Action', key: 'text', width: 45 },
     { header: 'Lead Reference', key: 'reference', width: 22 },
@@ -174,99 +319,12 @@ export async function generateOverallExcel(currentUser) {
     { header: 'Created At', key: 'createdAt', width: 14, style: DATE_FMT },
     { header: 'Cleared At', key: 'clearedAt', width: 14, style: DATE_FMT },
   ]);
-
-  const visitRows = [];
-  const followUpRows = [];
-  const actionRows = [];
-
-  for (const lead of leads) {
-    const base = {
-      reference: lead.reference || '',
-      businessName: lead.businessName || '',
-      city: lead.city || '',
-    };
-
-    leadSheet.addRow({
-      ...base,
-      contactPerson: lead.contactPerson || '',
-      designation: lead.designation || '',
-      mobile: lead.mobile || '',
-      email: lead.email || '',
-      businessType: lead.businessType || '',
-      contactedFor: Array.isArray(lead.contactedFor)
-        ? lead.contactedFor.join(', ')
-        : lead.contactedFor || '',
-      leadDate: asDate(lead.leadDate),
-      status: lead.status || '',
-      assignedTo: lead.assignedTo?.name || '',
-      visits: (lead.visitReports || []).length,
-      openFollowUps: (lead.followUps || []).filter((f) => f.status === 'open')
-        .length,
-      openActionPoints: (lead.actionPoints || []).filter((a) => !a.cleared)
-        .length,
-      createdAt: asDate(lead.createdAt),
+  for (const row of actionPoints) {
+    const added = actionSheet.addRow({
+      ...row,
+      createdAt: asDate(row.createdAt),
+      clearedAt: asDate(row.clearedAt),
     });
-
-    for (const vr of lead.visitReports || []) {
-      visitRows.push({
-        ...base,
-        visitDate: asDate(vr.visitDate),
-        note: vr.note || '',
-        followUpDate: asDate(vr.followUpDate),
-        followUpNote: vr.followUpNote || '',
-        actionPoint: vr.actionPoint || 'No action',
-        createdByName: vr.createdByName || '',
-        createdAt: asDate(vr.createdAt),
-      });
-    }
-
-    for (const fu of lead.followUps || []) {
-      followUpRows.push({
-        ...base,
-        dueDate: asDate(fu.dueDate),
-        note: fu.note || '',
-        status: fu.status || 'open',
-        closingNote: fu.closingNote || '',
-        closedAt: asDate(fu.closedAt),
-        createdByName: fu.createdByName || '',
-      });
-    }
-
-    for (const ap of lead.actionPoints || []) {
-      actionRows.push({
-        ...base,
-        text: ap.text || '',
-        status: ap.cleared ? 'cleared' : 'open',
-        createdByName: ap.createdByName || '',
-        createdAt: asDate(ap.createdAt),
-        clearedAt: asDate(ap.clearedAt),
-      });
-    }
-  }
-
-  const byDateDesc = (field) => (a, b) =>
-    (b[field] ? b[field].getTime() : 0) - (a[field] ? a[field].getTime() : 0);
-
-  visitRows.sort(byDateDesc('visitDate'));
-  followUpRows.sort(byDateDesc('dueDate'));
-  actionRows.sort(byDateDesc('createdAt'));
-
-  for (const row of visitRows) {
-    const added = visitSheet.addRow(row);
-    added.alignment = { vertical: 'top' };
-    added.getCell('note').alignment = { vertical: 'top', wrapText: true };
-    added.getCell('followUpNote').alignment = {
-      vertical: 'top',
-      wrapText: true,
-    };
-  }
-  for (const row of followUpRows) {
-    const added = followUpSheet.addRow(row);
-    added.getCell('note').alignment = { wrapText: true };
-    added.getCell('closingNote').alignment = { wrapText: true };
-  }
-  for (const row of actionRows) {
-    const added = actionSheet.addRow(row);
     added.getCell('text').alignment = { wrapText: true };
   }
 
@@ -281,4 +339,4 @@ export async function generateOverallExcel(currentUser) {
   };
 }
 
-export default { getReportOverview, generateOverallExcel };
+export default { getReportData, generateOverallExcel };

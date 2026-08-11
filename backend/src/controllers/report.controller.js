@@ -1,27 +1,40 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import { sendOk } from '../utils/apiResponse.js';
 import {
-  getReportOverview,
+  getReportData,
   generateOverallExcel,
 } from '../services/report.service.js';
 
+function pickFilters(query = {}) {
+  return {
+    q: query.q || undefined,
+    status: query.status || undefined,
+    city: query.city || undefined,
+    from: query.from || undefined,
+    to: query.to || undefined,
+  };
+}
+
 /**
  * GET /api/reports/overview
- * Per-lead overall report rows plus headline totals,
- * scoped by role (exec = own assigned leads, admin = all).
+ * Filtered report data — summary totals, per-lead rows, and the flattened
+ * visit/follow-up/action-point lists. Scoped by role.
+ * Query: q, status, city, from, to.
  */
 export const overview = asyncHandler(async (req, res) => {
-  const result = await getReportOverview(req.user);
+  const result = await getReportData(req.user, pickFilters(req.query));
   return sendOk(res, result);
 });
 
 /**
  * GET /api/reports/export
- * Overall Excel workbook: Leads, Visit Reports, Follow-ups, Action Points.
+ * The same filtered data as an .xlsx workbook (Leads, Visit Reports,
+ * Follow-ups, Action Points sheets).
  */
 export const exportExcel = asyncHandler(async (req, res) => {
   const { buffer, filename, contentType } = await generateOverallExcel(
-    req.user
+    req.user,
+    pickFilters(req.query)
   );
   res.setHeader('Content-Type', contentType);
   res.setHeader(
