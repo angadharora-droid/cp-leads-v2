@@ -193,7 +193,9 @@ export async function generateOverallExcel(currentUser) {
       mobile: lead.mobile || '',
       email: lead.email || '',
       businessType: lead.businessType || '',
-      contactedFor: (lead.contactedFor || []).join(', '),
+      contactedFor: Array.isArray(lead.contactedFor)
+        ? lead.contactedFor.join(', ')
+        : lead.contactedFor || '',
       leadDate: asDate(lead.leadDate),
       status: lead.status || '',
       assignedTo: lead.assignedTo?.name || '',
