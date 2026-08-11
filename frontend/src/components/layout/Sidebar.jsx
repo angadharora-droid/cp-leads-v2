@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   CalendarClock,
   FolderKanban,
-  NotebookPen,
+  BarChart3,
   UserCog,
   ScrollText,
   Building2,
@@ -20,7 +20,7 @@ const NAV_GROUPS = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
       { to: '/leads', label: 'Leads', icon: FolderKanban },
       { to: '/follow-ups', label: 'Follow-ups', icon: CalendarClock },
-      { to: '/visit-reports', label: 'Visit Reports', icon: NotebookPen },
+      { to: '/reports', label: 'Reports', icon: BarChart3 },
     ],
   },
   {

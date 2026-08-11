@@ -13,7 +13,7 @@ import LeadFormPage from '@/pages/LeadFormPage';
 import LeadDetailPage from '@/pages/LeadDetailPage';
 import KitPage from '@/pages/KitPage';
 import FollowUpsPage from '@/pages/FollowUpsPage';
-import VisitReportsPage from '@/pages/VisitReportsPage';
+import ReportsPage from '@/pages/ReportsPage';
 import LeadTrackerPage from '@/pages/LeadTrackerPage';
 import UsersPage from '@/pages/UsersPage';
 import AuditLogsPage from '@/pages/AuditLogsPage';
@@ -62,7 +62,7 @@ function App() {
               <Route path="/leads/:id/kits/new" element={<KitPage />} />
               <Route path="/leads/:id/kits/:kitId" element={<KitPage />} />
               <Route path="/follow-ups" element={<FollowUpsPage />} />
-              <Route path="/visit-reports" element={<VisitReportsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
 
               {/* Admin-only */}
