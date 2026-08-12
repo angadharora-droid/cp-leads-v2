@@ -1289,6 +1289,9 @@ function KitActions({ kit, setKit, leadId, navigate }) {
   const [viewingId, setViewingId] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const fileInputRef = useRef(null);
+  const [uploadingAgreement, setUploadingAgreement] = useState(false);
+  const [agreementBusy, setAgreementBusy] = useState(null); // 'download' | 'remove'
+  const agreementInputRef = useRef(null);
 
   async function handleDownload(doc, label) {
     setDownloading(doc || 'main');
@@ -1354,6 +1357,60 @@ function KitActions({ kit, setKit, leadId, navigate }) {
     }
   }
 
+  async function handleAgreementUpload(fileList) {
+    const file = fileList?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingAgreement(true);
+    try {
+      const res = await api.post(`/kits/${kit._id}/agreement-file`, formData);
+      setKit(pickKit(res));
+      toast.success(
+        'Agreement uploaded — it will be sent to the client as a PDF'
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to upload agreement'));
+    } finally {
+      setUploadingAgreement(false);
+      if (agreementInputRef.current) agreementInputRef.current.value = '';
+    }
+  }
+
+  async function handleAgreementDownload() {
+    setAgreementBusy('download');
+    try {
+      const res = await api.get(`/kits/${kit._id}/agreement-file`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = kit.agreementFile?.filename || 'Agreement';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to download agreement'));
+    } finally {
+      setAgreementBusy(null);
+    }
+  }
+
+  async function handleAgreementRemove() {
+    setAgreementBusy('remove');
+    try {
+      const res = await api.delete(`/kits/${kit._id}/agreement-file`);
+      setKit(pickKit(res));
+      toast.success('Uploaded agreement removed');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to remove agreement'));
+    } finally {
+      setAgreementBusy(null);
+    }
+  }
+
   async function handleDeleteKit() {
     try {
       await api.delete(`/kits/${kit._id}`);
@@ -1377,7 +1434,7 @@ function KitActions({ kit, setKit, leadId, navigate }) {
         <CardDescription>
           {isEvent
             ? 'Generate the proposal or confirmation contract, email it, then upload the signed copy.'
-            : 'Generate the corporate rate agreement letter, email it, then upload the signed copy.'}
+            : 'Generate the agreement in Word, or upload your edited Word copy — emails always attach it as PDF. Then upload the signed copy.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -1412,19 +1469,41 @@ function KitActions({ kit, setKit, leadId, navigate }) {
               </Button>
             </>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDownload(undefined, 'Corporate Rate Agreement')}
-              disabled={downloading !== null}
-            >
-              {downloading ? (
-                <Spinner size="sm" className="text-current" />
-              ) : (
-                <FileDown className="h-4 w-4" />
-              )}
-              Agreement (Word)
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDownload(undefined, 'Corporate Rate Agreement')}
+                disabled={downloading !== null}
+              >
+                {downloading ? (
+                  <Spinner size="sm" className="text-current" />
+                ) : (
+                  <FileDown className="h-4 w-4" />
+                )}
+                Agreement (Word)
+              </Button>
+              <input
+                ref={agreementInputRef}
+                type="file"
+                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => handleAgreementUpload(e.target.files)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => agreementInputRef.current?.click()}
+                disabled={uploadingAgreement}
+              >
+                {uploadingAgreement ? (
+                  <Spinner size="sm" className="text-current" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                Upload agreement
+              </Button>
+            </>
           )}
 
           <Button size="sm" onClick={() => setEmailOpen(true)}>
@@ -1443,6 +1522,53 @@ function KitActions({ kit, setKit, leadId, navigate }) {
             </Button>
           </div>
         </div>
+
+        {kit.agreementFile ? (
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
+            <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">
+                {kit.agreementFile.filename}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Uploaded agreement — emailed to the client as PDF
+                {' · '}
+                {formatDateTime(kit.agreementFile.uploadedAt)}
+                {kit.agreementFile.uploadedByName
+                  ? ` · by ${kit.agreementFile.uploadedByName}`
+                  : ''}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleAgreementDownload}
+              disabled={agreementBusy !== null}
+              aria-label="Download uploaded agreement"
+            >
+              {agreementBusy === 'download' ? (
+                <Spinner size="sm" className="text-current" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={handleAgreementRemove}
+              disabled={agreementBusy !== null}
+              aria-label="Remove uploaded agreement"
+            >
+              {agreementBusy === 'remove' ? (
+                <Spinner size="sm" className="text-current" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        ) : null}
 
         {sentEmails.length > 0 ? (
           <div className="rounded-lg border bg-muted/20 px-4 py-3">
@@ -1587,10 +1713,14 @@ function KitActions({ kit, setKit, leadId, navigate }) {
 
 function EmailDialog({ open, onOpenChange, kit, setKit }) {
   const isEvent = kit.kitType === 'event';
+  const hasUploadedAgreement = Boolean(kit.agreementFile);
   const defaultTo = isEvent ? kit.event?.email || '' : kit.corporate?.email || '';
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState('');
   const [docType, setDocType] = useState('proposal');
+  const [attachment, setAttachment] = useState(
+    hasUploadedAgreement ? 'uploaded' : 'generated'
+  );
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -1598,6 +1728,7 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
   useEffect(() => {
     if (open) {
       setTo(isEvent ? kit.event?.email || '' : kit.corporate?.email || '');
+      setAttachment(hasUploadedAgreement ? 'uploaded' : 'generated');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -1616,6 +1747,7 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
         subject: subject.trim() || undefined,
         message: message.trim() || undefined,
         docType: isEvent ? docType : undefined,
+        attachment: hasUploadedAgreement ? attachment : undefined,
       });
       setKit(pickKit(res));
       toast.success(`Email sent to ${trimmedTo}`);
@@ -1633,12 +1765,21 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
         <DialogHeader>
           <DialogTitle>Email to client</DialogTitle>
           <DialogDescription>
-            The {isEvent
-              ? docType === 'confirmation'
-                ? 'confirmation contract'
-                : 'proposal'
-              : 'rate agreement letter'}{' '}
-            PDF is generated and attached automatically.
+            {hasUploadedAgreement && attachment === 'uploaded' ? (
+              <>
+                Your uploaded agreement ({kit.agreementFile.filename}) is
+                converted to PDF and attached.
+              </>
+            ) : (
+              <>
+                The {isEvent
+                  ? docType === 'confirmation'
+                    ? 'confirmation contract'
+                    : 'proposal'
+                  : 'rate agreement letter'}{' '}
+                PDF is generated and attached automatically.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -1653,6 +1794,29 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
                 <SelectContent>
                   <SelectItem value="proposal">Proposal</SelectItem>
                   <SelectItem value="confirmation">Confirmation Contract</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
+          {hasUploadedAgreement ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Attachment</Label>
+              <Select
+                value={attachment}
+                onValueChange={setAttachment}
+                disabled={sending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uploaded">
+                    Uploaded agreement — {kit.agreementFile.filename}
+                  </SelectItem>
+                  <SelectItem value="generated">
+                    Auto-generated document
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

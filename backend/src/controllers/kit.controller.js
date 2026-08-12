@@ -84,6 +84,42 @@ export const removeConfirmationFile = asyncHandler(async (req, res) => {
   return sendOk(res, { kit });
 });
 
+export const uploadAgreement = asyncHandler(async (req, res) => {
+  const kit = await kitService.setAgreementFile(
+    req.params.kitId,
+    req.file,
+    req.user,
+    req
+  );
+  return sendOk(res, { kit }, 201);
+});
+
+export const downloadAgreementFile = asyncHandler(async (req, res) => {
+  const { meta, stream } = await kitService.getAgreementFile(
+    req.params.kitId,
+    req.user
+  );
+  res.setHeader('Content-Type', meta.contentType || 'application/octet-stream');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${encodeURIComponent(meta.filename)}"`
+  );
+  stream.on('error', () => {
+    if (!res.headersSent) res.status(404);
+    res.end();
+  });
+  return stream.pipe(res);
+});
+
+export const removeAgreementFile = asyncHandler(async (req, res) => {
+  const kit = await kitService.removeAgreementFile(
+    req.params.kitId,
+    req.user,
+    req
+  );
+  return sendOk(res, { kit });
+});
+
 export default {
   listForLead,
   create,
@@ -95,4 +131,7 @@ export default {
   uploadConfirmation,
   downloadConfirmationFile,
   removeConfirmationFile,
+  uploadAgreement,
+  downloadAgreementFile,
+  removeAgreementFile,
 };

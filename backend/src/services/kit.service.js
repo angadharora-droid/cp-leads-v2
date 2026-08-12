@@ -6,6 +6,7 @@ import { AppError } from '../utils/apiResponse.js';
 import { writeAudit } from '../utils/audit.js';
 import { uploadBufferToGridFS, deleteGridFSFile, getKitFilesBucket } from '../utils/gridfs.js';
 import { buildKitPdf } from './pdf.service.js';
+import { convertWordToPdf } from './docxToPdf.service.js';
 import { sendMail } from './email.service.js';
 
 const CONTRACT_NUMBER_START = 29500;
@@ -154,6 +155,9 @@ export async function deleteKit(kitId, actor, req) {
   for (const file of kit.confirmationFiles || []) {
     await deleteGridFSFile(file.fileId);
   }
+  if (kit.agreementFile?.fileId) {
+    await deleteGridFSFile(kit.agreementFile.fileId);
+  }
   await kit.deleteOne();
 
   await writeAudit({
@@ -177,11 +181,49 @@ export async function generateKitPdf(kitId, docType, actor) {
 
 /* --------------------------------- Email ---------------------------------- */
 
+/** Reads a GridFS file fully into a buffer (for email attachments). */
+async function readGridFSFileBuffer(fileId) {
+  const stream = getKitFilesBucket().openDownloadStream(
+    new mongoose.Types.ObjectId(String(fileId))
+  );
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 export async function sendKitEmail(kitId, payload, actor, req) {
   const { kit, lead } = await loadKitScoped(kitId, actor);
   const docType = kit.kitType === 'corporate' ? 'proposal' : payload.docType || 'proposal';
 
-  const { buffer, filename, contentType } = await buildKitPdf(kit, docType);
+  const useUploaded = payload.attachment === 'uploaded';
+  let attachment;
+  if (useUploaded) {
+    if (!kit.agreementFile) {
+      throw new AppError(
+        'No uploaded agreement on this kit — upload one first or send the generated document.',
+        422,
+        'NO_UPLOADED_AGREEMENT'
+      );
+    }
+    attachment = {
+      filename: kit.agreementFile.filename,
+      content: await readGridFSFileBuffer(kit.agreementFile.fileId),
+      contentType: kit.agreementFile.contentType,
+    };
+  } else {
+    const { buffer, filename, contentType } = await buildKitPdf(kit, docType);
+    attachment = { filename, content: buffer, contentType };
+  }
+
+  // Clients always receive PDFs — Word documents (the generated corporate
+  // letter or an uploaded edited agreement) are converted before sending.
+  if (attachment.contentType !== 'application/pdf') {
+    attachment = {
+      filename: `${attachment.filename.replace(/\.[^./\\]+$/, '')}.pdf`,
+      content: await convertWordToPdf(attachment.content, attachment.filename),
+      contentType: 'application/pdf',
+    };
+  }
 
   const docName =
     kit.kitType === 'corporate'
@@ -211,7 +253,7 @@ export async function sendKitEmail(kitId, payload, actor, req) {
       cc: payload.cc,
       subject,
       text,
-      attachments: [{ filename, content: buffer, contentType }],
+      attachments: [attachment],
     });
   } catch (err) {
     // Configuration errors surface as-is; transport errors are logged on the kit.
@@ -229,7 +271,12 @@ export async function sendKitEmail(kitId, payload, actor, req) {
   if (kit.status === 'draft') kit.status = 'sent';
   await kit.save();
 
-  pushHistory(lead, actor, 'proposal_sent', `${docName} emailed to ${payload.to}`);
+  pushHistory(
+    lead,
+    actor,
+    'proposal_sent',
+    `${docName}${useUploaded ? ' (uploaded copy)' : ''} emailed to ${payload.to}`
+  );
   await lead.save();
 
   await writeAudit({
@@ -238,7 +285,7 @@ export async function sendKitEmail(kitId, payload, actor, req) {
     action: 'kit.email',
     entityType: 'Kit',
     entityId: kit._id,
-    summary: `Emailed ${docName} to ${payload.to} (lead ${lead.reference})`,
+    summary: `Emailed ${docName}${useUploaded ? ' (uploaded copy)' : ''} to ${payload.to} (lead ${lead.reference})`,
   });
 
   return kit;
@@ -351,6 +398,98 @@ export async function removeConfirmationFile(kitId, fileId, actor, req) {
   return kit;
 }
 
+/* --------------------------- Uploaded agreement ---------------------------- */
+
+// Word only: the exec edits the agreement in Word; it is converted to PDF
+// when emailed to the client.
+const ALLOWED_AGREEMENT_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+export async function setAgreementFile(kitId, file, actor, req) {
+  if (!file) throw new AppError('No file uploaded', 400, 'NO_FILES');
+  if (!ALLOWED_AGREEMENT_TYPES.has(file.mimetype)) {
+    throw new AppError(
+      `Unsupported file type: ${file.mimetype}. Upload a Word document (DOC/DOCX).`,
+      422,
+      'UNSUPPORTED_FILE_TYPE'
+    );
+  }
+
+  const { kit, lead } = await loadKitScoped(kitId, actor);
+
+  // A kit keeps a single working agreement — re-uploading replaces it.
+  if (kit.agreementFile?.fileId) {
+    await deleteGridFSFile(kit.agreementFile.fileId);
+  }
+
+  const fileId = await uploadBufferToGridFS(
+    file.buffer,
+    file.originalname,
+    file.mimetype
+  );
+  kit.agreementFile = {
+    fileId,
+    filename: file.originalname,
+    contentType: file.mimetype,
+    size: file.size,
+    uploadedBy: actor?.id,
+    uploadedByName: actor?.name,
+  };
+  await kit.save();
+
+  pushHistory(
+    lead,
+    actor,
+    'agreement_uploaded',
+    `Edited agreement uploaded (${file.originalname}) for ${kitLabel(kit)}`
+  );
+  await lead.save();
+
+  await writeAudit({
+    req,
+    actor,
+    action: 'kit.agreement_upload',
+    entityType: 'Kit',
+    entityId: kit._id,
+    summary: `Uploaded agreement ${file.originalname} for lead ${lead.reference}`,
+  });
+
+  return kit;
+}
+
+export async function getAgreementFile(kitId, actor) {
+  const { kit } = await loadKitScoped(kitId, actor);
+  const meta = kit.agreementFile;
+  if (!meta) throw new AppError('File not found', 404, 'NOT_FOUND');
+  const stream = getKitFilesBucket().openDownloadStream(
+    new mongoose.Types.ObjectId(String(meta.fileId))
+  );
+  return { meta, stream };
+}
+
+export async function removeAgreementFile(kitId, actor, req) {
+  const { kit, lead } = await loadKitScoped(kitId, actor);
+  if (!kit.agreementFile) throw new AppError('File not found', 404, 'NOT_FOUND');
+
+  const removed = kit.agreementFile;
+  await deleteGridFSFile(removed.fileId);
+  kit.agreementFile = undefined;
+  await kit.save();
+
+  await writeAudit({
+    req,
+    actor,
+    action: 'kit.agreement_delete',
+    entityType: 'Kit',
+    entityId: kit._id,
+    summary: `Removed uploaded agreement ${removed.filename} (lead ${lead.reference})`,
+  });
+
+  return kit;
+}
+
 export default {
   listKitsForLead,
   createKit,
@@ -362,4 +501,7 @@ export default {
   addConfirmationFiles,
   getConfirmationFile,
   removeConfirmationFile,
+  setAgreementFile,
+  getAgreementFile,
+  removeAgreementFile,
 };

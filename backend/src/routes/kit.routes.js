@@ -56,4 +56,15 @@ router.delete(
   kitController.removeConfirmationFile
 );
 
+// Edited agreement (Word/PDF) uploaded by the sales exec — one per kit.
+router.post(
+  '/:kitId/agreement-file',
+  upload.single('file'),
+  kitController.uploadAgreement
+);
+
+router.get('/:kitId/agreement-file', kitController.downloadAgreementFile);
+
+router.delete('/:kitId/agreement-file', kitController.removeAgreementFile);
+
 export default router;

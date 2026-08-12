@@ -155,7 +155,7 @@ const emailLogSchema = new Schema(
   { _id: true }
 );
 
-const confirmationFileSchema = new Schema(
+const uploadedFileSchema = new Schema(
   {
     fileId: { type: Schema.Types.ObjectId, required: true },
     filename: { type: String, required: true },
@@ -179,7 +179,10 @@ const kitSchema = new Schema(
     event: { type: eventDetailsSchema, default: undefined },
     corporate: { type: corporateDetailsSchema, default: undefined },
     emailLog: { type: [emailLogSchema], default: [] },
-    confirmationFiles: { type: [confirmationFileSchema], default: [] },
+    confirmationFiles: { type: [uploadedFileSchema], default: [] },
+    // Edited agreement uploaded by the sales exec — attached to client emails
+    // in place of the auto-generated document when present.
+    agreementFile: { type: uploadedFileSchema, default: undefined },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     createdByName: { type: String },
   },

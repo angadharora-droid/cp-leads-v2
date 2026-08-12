@@ -1,0 +1,6 @@
+# Railway (Nixpacks) build config.
+# LibreOffice powers the Word→PDF conversion for emailed agreements
+# (src/services/docxToPdf.service.js). fonts-liberation provides
+# metric-compatible substitutes for Times New Roman in the letters.
+[phases.setup]
+aptPkgs = ["libreoffice-writer", "fonts-liberation"]

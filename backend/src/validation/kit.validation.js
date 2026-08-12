@@ -141,6 +141,7 @@ export const sendKitEmailSchema = z.object({
   subject: z.string().trim().max(300).optional(),
   message: z.string().trim().max(10000).optional(),
   docType: z.enum(['proposal', 'confirmation']).optional(),
+  attachment: z.enum(['generated', 'uploaded']).optional(),
 });
 
 export const kitPdfQuerySchema = z.object({
