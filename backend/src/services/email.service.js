@@ -28,6 +28,35 @@ function getTransporter() {
   return transporter;
 }
 
+/** Builds a one-off transporter for a per-user mailbox account. */
+function accountTransporter(account) {
+  return nodemailer.createTransport({
+    host: account.host,
+    port: account.port,
+    secure: account.secure,
+    auth: { user: account.user, pass: account.pass },
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+  });
+}
+
+/**
+ * Verifies SMTP login for a mailbox account (used before saving a user's
+ * sending mailbox, so bad passwords are rejected immediately).
+ * @param {{host: string, port: number, secure: boolean, user: string, pass: string}} account
+ */
+export async function verifyMailAccount(account) {
+  try {
+    await accountTransporter(account).verify();
+  } catch (err) {
+    throw new AppError(
+      `Could not sign in to this mailbox: ${err?.message || 'unknown error'}. Check the email address, password and SMTP settings.`,
+      422,
+      'MAILBOX_VERIFY_FAILED'
+    );
+  }
+}
+
 /**
  * Sends an email with optional attachments.
  * @param {object} opts
@@ -36,11 +65,16 @@ function getTransporter() {
  * @param {string} opts.subject
  * @param {string} opts.text - Plain-text body.
  * @param {Array<{filename: string, content: Buffer, contentType?: string}>} [opts.attachments]
+ * @param {{host: string, port: number, secure: boolean, user: string, pass: string}} [opts.account]
+ *   - Per-user mailbox to send through; falls back to the global SMTP_* env transport.
+ * @param {string} [opts.from] - From header override (defaults per transport).
  */
-export async function sendMail({ to, cc, subject, text, attachments }) {
-  const transport = getTransporter();
+export async function sendMail({ to, cc, subject, text, attachments, account, from }) {
+  const transport = account ? accountTransporter(account) : getTransporter();
   return transport.sendMail({
-    from: env.MAIL_FROM || env.SMTP_USER,
+    from:
+      from ||
+      (account ? account.user : env.MAIL_FROM || env.SMTP_USER),
     to,
     cc: cc || undefined,
     subject,
@@ -49,4 +83,4 @@ export async function sendMail({ to, cc, subject, text, attachments }) {
   });
 }
 
-export default { isEmailConfigured, sendMail };
+export default { isEmailConfigured, verifyMailAccount, sendMail };

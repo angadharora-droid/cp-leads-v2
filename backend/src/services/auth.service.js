@@ -12,6 +12,8 @@ import {
 import { writeAudit } from '../utils/audit.js';
 import { passwordPolicyError } from '../utils/passwordPolicy.js';
 import { phoneKey } from '../utils/phone.js';
+import { encryptSecret } from '../utils/mailCrypto.js';
+import { verifyMailAccount } from './email.service.js';
 import User from '../models/User.js';
 import RefreshToken from '../models/RefreshToken.js';
 
@@ -294,4 +296,86 @@ export async function changePassword({ user, currentPassword, newPassword, req }
   return { user: fresh };
 }
 
-export default { login, refresh, logout, changePassword };
+/* ------------------------- Personal sending mailbox ------------------------ */
+
+function emailSenderSummary(user) {
+  const s = user.emailSender;
+  if (!s?.email || !s?.passEnc) return { configured: false };
+  return {
+    configured: true,
+    email: s.email,
+    host: s.host,
+    port: s.port,
+    secure: s.secure,
+    linkedAt: s.linkedAt,
+  };
+}
+
+export async function getEmailSender({ user }) {
+  return emailSenderSummary(user);
+}
+
+/**
+ * Links (or replaces) the user's official sending mailbox. The SMTP login is
+ * verified against the mail server before anything is saved, so a wrong
+ * password fails here rather than at send time.
+ */
+export async function setEmailSender({ user, payload, req }) {
+  await verifyMailAccount({
+    host: payload.host,
+    port: payload.port,
+    secure: payload.secure,
+    user: payload.email,
+    pass: payload.password,
+  });
+
+  user.emailSender = {
+    email: payload.email,
+    host: payload.host,
+    port: payload.port,
+    secure: payload.secure,
+    passEnc: encryptSecret(payload.password),
+    linkedAt: new Date(),
+  };
+  await user.save();
+
+  await writeAudit({
+    req,
+    actor: user,
+    action: 'user.email_sender_link',
+    entityType: 'User',
+    entityId: user._id,
+    summary: `${user.email} linked sending mailbox ${payload.email}`,
+  });
+
+  return emailSenderSummary(user);
+}
+
+export async function removeEmailSender({ user, req }) {
+  const linked = user.emailSender?.email;
+  user.emailSender = undefined;
+  await user.save();
+
+  if (linked) {
+    await writeAudit({
+      req,
+      actor: user,
+      action: 'user.email_sender_unlink',
+      entityType: 'User',
+      entityId: user._id,
+      summary: `${user.email} unlinked sending mailbox ${linked}`,
+    });
+  }
+
+  return { configured: false };
+}
+
+export default {
+  login,
+  refresh,
+  logout,
+  changePassword,
+  getEmailSender,
+  setEmailSender,
+  removeEmailSender,
+};

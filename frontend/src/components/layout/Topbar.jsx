@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Menu, KeyRound, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, KeyRound, LogOut, ChevronDown, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { getInitials } from '@/lib/format';
@@ -105,6 +105,10 @@ function Topbar({ onMenuClick }) {
             <DropdownMenuItem onClick={() => navigate('/change-password')}>
               <KeyRound className="h-4 w-4" />
               Change password
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/email-settings')}>
+              <Mail className="h-4 w-4" />
+              Email settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

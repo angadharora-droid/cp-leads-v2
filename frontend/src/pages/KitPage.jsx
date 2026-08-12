@@ -1582,6 +1582,7 @@ function KitActions({ kit, setKit, leadId, navigate }) {
                     {e.docType === 'confirmation' ? 'Confirmation Contract' : isEvent ? 'Proposal' : 'Rate Agreement'}
                   </span>{' '}
                   to {e.to} · {formatDateTime(e.sentAt)}
+                  {e.from ? ` · from ${e.from}` : ''}
                   {e.sentByName ? ` · by ${e.sentByName}` : ''}
                 </li>
               ))}
@@ -1724,11 +1725,19 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [senderEmail, setSenderEmail] = useState(null);
 
   useEffect(() => {
     if (open) {
       setTo(isEvent ? kit.event?.email || '' : kit.corporate?.email || '');
       setAttachment(hasUploadedAgreement ? 'uploaded' : 'generated');
+      api
+        .get('/auth/email-sender')
+        .then((res) => {
+          const data = res?.data?.data;
+          setSenderEmail(data?.configured ? data.email : null);
+        })
+        .catch(() => setSenderEmail(null));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -1779,7 +1788,10 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
                   : 'rate agreement letter'}{' '}
                 PDF is generated and attached automatically.
               </>
-            )}
+            )}{' '}
+            {senderEmail
+              ? `Sent from your mailbox (${senderEmail}).`
+              : 'Sent from the company mailbox — link your official ID under Email settings.'}
           </DialogDescription>
         </DialogHeader>
 

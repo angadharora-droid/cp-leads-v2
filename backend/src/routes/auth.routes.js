@@ -6,6 +6,7 @@ import { authLimiter } from '../middleware/rateLimit.js';
 import {
   loginSchema,
   changePasswordSchema,
+  emailSenderSchema,
 } from '../validation/auth.validation.js';
 import * as authController from '../controllers/auth.controller.js';
 
@@ -28,5 +29,15 @@ router.post(
   authController.changePassword
 );
 router.get('/me', authenticate, authController.me);
+
+// Personal sending mailbox (the user's official email ID for client emails).
+router.get('/email-sender', authenticate, authController.getEmailSender);
+router.put(
+  '/email-sender',
+  authenticate,
+  validate(emailSenderSchema),
+  authController.setEmailSender
+);
+router.delete('/email-sender', authenticate, authController.removeEmailSender);
 
 export default router;

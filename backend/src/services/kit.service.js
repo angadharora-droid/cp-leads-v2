@@ -4,10 +4,11 @@ import Kit from '../models/Kit.js';
 import Lead from '../models/Lead.js';
 import { AppError } from '../utils/apiResponse.js';
 import { writeAudit } from '../utils/audit.js';
+import { decryptSecret } from '../utils/mailCrypto.js';
 import { uploadBufferToGridFS, deleteGridFSFile, getKitFilesBucket } from '../utils/gridfs.js';
 import { buildKitPdf } from './pdf.service.js';
 import { convertWordToPdf } from './docxToPdf.service.js';
-import { sendMail } from './email.service.js';
+import { sendMail, isEmailConfigured } from './email.service.js';
 
 const CONTRACT_NUMBER_START = 29500;
 
@@ -55,12 +56,17 @@ async function nextContractNumber() {
   return String(max + 1);
 }
 
+// req.user is { id, role, user } — the display name lives on the user doc.
+function actorName(actor) {
+  return actor?.user?.name || actor?.name || '';
+}
+
 function pushHistory(lead, actor, type, summary) {
   lead.history.push({
     type,
     summary,
     by: actor?.id,
-    byName: actor?.name,
+    byName: actorName(actor) || undefined,
   });
 }
 
@@ -86,7 +92,7 @@ export async function createKit(leadId, body, actor, req) {
     lead: lead._id,
     kitType: body.kitType,
     createdBy: actor?.id,
-    createdByName: actor?.name,
+    createdByName: actorName(actor) || undefined,
   });
 
   if (body.kitType === 'event') {
@@ -195,6 +201,31 @@ export async function sendKitEmail(kitId, payload, actor, req) {
   const { kit, lead } = await loadKitScoped(kitId, actor);
   const docType = kit.kitType === 'corporate' ? 'proposal' : payload.docType || 'proposal';
 
+  // Send from the exec's linked official mailbox when available; otherwise
+  // fall back to the shared SMTP_* account from the environment.
+  const senderName = actorName(actor);
+  const linked = actor?.user?.emailSender;
+  let account;
+  let from;
+  let fromAddress;
+  if (linked?.email && linked?.passEnc) {
+    account = {
+      host: linked.host,
+      port: linked.port,
+      secure: linked.secure,
+      user: linked.email,
+      pass: decryptSecret(linked.passEnc),
+    };
+    from = senderName ? `"${senderName}" <${linked.email}>` : linked.email;
+    fromAddress = linked.email;
+  } else if (!isEmailConfigured()) {
+    throw new AppError(
+      'No sending mailbox is linked to your account. Open the user menu → Email settings to link your official email ID.',
+      503,
+      'EMAIL_NOT_CONFIGURED'
+    );
+  }
+
   const useUploaded = payload.attachment === 'uploaded';
   let attachment;
   if (useUploaded) {
@@ -236,15 +267,16 @@ export async function sendKitEmail(kitId, payload, actor, req) {
     payload.subject || `${docName} — ${kitLabel(kit)} — Centre Point Hotels & Resorts`;
   const text =
     payload.message ||
-    `Dear Guest,\n\nGreetings from Centre Point Hotels & Resorts!\n\nPlease find attached the ${docName.toLowerCase()} for your kind perusal. We look forward to hosting you.\n\nWarm regards,\n${actor?.name || 'Centre Point Hotels & Resorts'}`;
+    `Dear Guest,\n\nGreetings from Centre Point Hotels & Resorts!\n\nPlease find attached the ${docName.toLowerCase()} for your kind perusal. We look forward to hosting you.\n\nWarm regards,\n${senderName || 'Centre Point Hotels & Resorts'}`;
 
   const logEntry = {
     to: payload.to,
     cc: payload.cc,
     subject,
     docType,
+    from: fromAddress,
     sentBy: actor?.id,
-    sentByName: actor?.name,
+    sentByName: senderName || undefined,
   };
 
   try {
@@ -254,6 +286,8 @@ export async function sendKitEmail(kitId, payload, actor, req) {
       subject,
       text,
       attachments: [attachment],
+      account,
+      from,
     });
   } catch (err) {
     // Configuration errors surface as-is; transport errors are logged on the kit.
@@ -329,7 +363,7 @@ export async function addConfirmationFiles(kitId, files, actor, req) {
       contentType: file.mimetype,
       size: file.size,
       uploadedBy: actor?.id,
-      uploadedByName: actor?.name,
+      uploadedByName: actorName(actor) || undefined,
     });
   }
 
@@ -435,7 +469,7 @@ export async function setAgreementFile(kitId, file, actor, req) {
     contentType: file.mimetype,
     size: file.size,
     uploadedBy: actor?.id,
-    uploadedByName: actor?.name,
+    uploadedByName: actorName(actor) || undefined,
   };
   await kit.save();
 

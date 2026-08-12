@@ -3,6 +3,21 @@ import bcrypt from 'bcryptjs';
 
 const { Schema, model } = mongoose;
 
+// Personal sending mailbox (the exec's official email ID). When linked,
+// client emails go out from this account instead of the shared SMTP_* one.
+// The mailbox password is stored encrypted (utils/mailCrypto.js).
+const emailSenderSchema = new Schema(
+  {
+    email: { type: String, trim: true, lowercase: true },
+    host: { type: String, trim: true },
+    port: { type: Number, default: 465 },
+    secure: { type: Boolean, default: true },
+    passEnc: { type: String },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -25,6 +40,7 @@ const userSchema = new Schema(
     },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    emailSender: { type: emailSenderSchema, default: undefined },
   },
   { timestamps: true }
 );
@@ -37,6 +53,7 @@ userSchema.set('toJSON', {
   virtuals: true,
   transform(_doc, ret) {
     delete ret.passwordHash;
+    if (ret.emailSender) delete ret.emailSender.passEnc;
     delete ret.__v;
     return ret;
   },

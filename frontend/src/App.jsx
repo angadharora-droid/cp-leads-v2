@@ -18,6 +18,7 @@ import LeadTrackerPage from '@/pages/LeadTrackerPage';
 import UsersPage from '@/pages/UsersPage';
 import AuditLogsPage from '@/pages/AuditLogsPage';
 import ChangePasswordPage from '@/pages/ChangePasswordPage';
+import EmailSettingsPage from '@/pages/EmailSettingsPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 
 /** Sonner toaster that follows the app's light/dark theme. */
@@ -64,6 +65,7 @@ function App() {
               <Route path="/follow-ups" element={<FollowUpsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
+              <Route path="/email-settings" element={<EmailSettingsPage />} />
 
               {/* Admin-only */}
               <Route

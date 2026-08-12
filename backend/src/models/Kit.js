@@ -145,6 +145,8 @@ const emailLogSchema = new Schema(
     to: { type: String, required: true },
     cc: { type: String },
     subject: { type: String },
+    // Address the mail was sent from (the exec's linked mailbox, if any).
+    from: { type: String },
     docType: { type: String, enum: ['proposal', 'confirmation'] },
     status: { type: String, enum: ['sent', 'failed'], default: 'sent' },
     error: { type: String },

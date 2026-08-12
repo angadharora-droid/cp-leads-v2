@@ -26,6 +26,12 @@ const env = {
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
   MAIL_FROM: process.env.MAIL_FROM || '',
+
+  // Key for encrypting per-user mailbox passwords at rest. Falls back to the
+  // access secret; set a dedicated value in production so rotating JWT secrets
+  // does not invalidate stored mailbox credentials.
+  CRED_ENCRYPTION_KEY:
+    process.env.CRED_ENCRYPTION_KEY || process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_me',
 };
 
 env.isProduction = env.NODE_ENV === 'production';

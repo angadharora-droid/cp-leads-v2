@@ -54,4 +54,25 @@ export const changePasswordSchema = z
     path: ['newPassword'],
   });
 
-export default { loginSchema, changePasswordSchema };
+/** Linking the user's personal sending mailbox (official email ID). */
+export const emailSenderSchema = z.object({
+  email: z
+    .string({ required_error: 'Email address is required' })
+    .trim()
+    .toLowerCase()
+    .email('Enter a valid email address')
+    .max(200),
+  password: z
+    .string({ required_error: 'Mailbox password is required' })
+    .min(1, 'Mailbox password is required')
+    .max(200),
+  host: z
+    .string({ required_error: 'SMTP host is required' })
+    .trim()
+    .min(1, 'SMTP host is required')
+    .max(200),
+  port: z.coerce.number().int().min(1).max(65535).default(465),
+  secure: z.boolean().default(true),
+});
+
+export default { loginSchema, changePasswordSchema, emailSenderSchema };

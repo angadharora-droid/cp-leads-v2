@@ -83,4 +83,32 @@ export const me = asyncHandler(async (req, res) => {
   return sendOk(res, { user: req.user.user });
 });
 
-export default { login, refresh, logout, changePassword, me };
+export const getEmailSender = asyncHandler(async (req, res) => {
+  const result = await authService.getEmailSender({ user: req.user.user });
+  return sendOk(res, result);
+});
+
+export const setEmailSender = asyncHandler(async (req, res) => {
+  const result = await authService.setEmailSender({
+    user: req.user.user,
+    payload: req.body,
+    req,
+  });
+  return sendOk(res, result);
+});
+
+export const removeEmailSender = asyncHandler(async (req, res) => {
+  const result = await authService.removeEmailSender({ user: req.user.user, req });
+  return sendOk(res, result);
+});
+
+export default {
+  login,
+  refresh,
+  logout,
+  changePassword,
+  me,
+  getEmailSender,
+  setEmailSender,
+  removeEmailSender,
+};
