@@ -9,6 +9,18 @@ export function isEmailConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
 }
 
+/**
+ * Hostname announced in the SMTP EHLO/HELO handshake. Containers (Railway,
+ * Docker) have machine hostnames that strict servers — Rediffmail Pro in
+ * particular — reject with "550 Invalid HeloHost", so announce the sender's
+ * own mail domain instead (overridable via SMTP_HELO_NAME).
+ */
+function heloName(address) {
+  if (env.SMTP_HELO_NAME) return env.SMTP_HELO_NAME;
+  const domain = String(address || '').split('@')[1];
+  return domain || undefined;
+}
+
 function getTransporter() {
   if (!isEmailConfigured()) {
     throw new AppError(
@@ -22,6 +34,7 @@ function getTransporter() {
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE,
+      name: heloName(env.SMTP_USER),
       auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
     });
   }
@@ -34,6 +47,7 @@ function accountTransporter(account) {
     host: account.host,
     port: account.port,
     secure: account.secure,
+    name: heloName(account.user),
     auth: { user: account.user, pass: account.pass },
     connectionTimeout: 15000,
     greetingTimeout: 10000,

@@ -26,6 +26,8 @@ const env = {
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
   MAIL_FROM: process.env.MAIL_FROM || '',
+  // EHLO/HELO hostname override; defaults to the sending address's domain.
+  SMTP_HELO_NAME: process.env.SMTP_HELO_NAME || '',
 
   // Key for encrypting per-user mailbox passwords at rest. Falls back to the
   // access secret; set a dedicated value in production so rotating JWT secrets
