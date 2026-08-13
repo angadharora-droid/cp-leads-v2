@@ -112,8 +112,7 @@ export const CORPORATE_SECTIONS = (d) => [
       'Complimentary Breakfast for Residential Guest',
       'In room Wi-Fi Services.',
       'In room Tea / Coffee maker.',
-      'On the house packaged drinking water.',
-      'Daily newspaper in the room.',
+      'On the house 02 liter packaged drinking water per person.',
       'Usage of Gymnasium and Swimming Pool. (Only for Nagpur)',
     ],
   },
@@ -121,14 +120,19 @@ export const CORPORATE_SECTIONS = (d) => [
     title: 'AIRPORT TRANSFER:',
     underline: true,
     bullets: [
-      'Centre Point, Nagpur: Airport transfer is included in above quoted rates on sharing basis and will be subject to availability with prior 24 hours intimation for club and above category only.',
-      'Centre Point, Navi Mumbai: Airport transfer will be charged extra at INR 2500 plus taxes per way per vehicle.',
+      'Centre Point, Nagpur: Airport transfer is included in above quoted rates on sharing basis and will be subject to availability with prior 24 hours intimation for Club and above category only. For Executive Room and Premium Rooms airport transfers will cost you Rs. 600+ tax per way by MG motors and Rs. 1000+ tax per way by Innova.',
+      'Centre Point, Navi Mumbai: Airport transfer will be charged extra at INR 2500 plus taxes per way per vehicle. From T1 and T2 (Vile Parle and Andheri Airport) Rs. 750+ tax from Navi Mumbai International Airport per way.',
+      'Centre Point, Amravati: Airport transfer will be charged extra at INR 2500 plus taxes per way per vehicle.',
     ],
   },
   {
     title: 'SUPPLEMENT CHARGES:',
     underline: true,
-    bullets: [`Extra Bed on Continental Plan: ${d.extraBedRate || 'INR 1500 plus taxes'}.`],
+    bullets: [
+      `Extra Bed on Continental Plan: ${d.extraBedRate || 'INR 1500 plus taxes'}.`,
+      'Extra Bed on Modified American Plan: INR 2250 plus taxes.',
+      'Extra Bed on American Plan: INR 3000 plus taxes.',
+    ],
   },
   {
     title: 'CHECK-IN:',
@@ -150,7 +154,7 @@ export const CORPORATE_SECTIONS = (d) => [
   {
     title: 'CHILDREN POLICY',
     breakAfter: true,
-    bullets: ['Child up to 10 year will be complimentary without extra bed.'],
+    bullets: ['Child up to 12 year will be complimentary without extra bed.'],
   },
   {
     title: 'RESERVATION POLICY',

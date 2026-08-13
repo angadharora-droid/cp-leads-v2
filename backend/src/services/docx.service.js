@@ -48,7 +48,7 @@ const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
 // Cell paddings, twips (PDF paddings were 5/3.5pt, 5/2.5pt and 6/8pt).
 const GRID_MARGINS = { top: 70, bottom: 70, left: 100, right: 100 };
 const LIGHT_MARGINS = { top: 50, bottom: 50, left: 100, right: 100 };
-const FORM_MARGINS = { top: 160, bottom: 160, left: 120, right: 120 };
+const FORM_MARGINS = { top: 120, bottom: 120, left: 120, right: 120 };
 
 /** twips for a percentage of the content width. */
 const tw = (pct) => Math.round((pct / 100) * CONTENT_WIDTH);
@@ -90,6 +90,7 @@ function p(content, {
   numbering,
   indent,
   pageBreakBefore,
+  keepNext,
   border,
 } = {}) {
   return new Paragraph({
@@ -99,6 +100,8 @@ function p(content, {
     bullet,
     numbering,
     pageBreakBefore,
+    keepNext,
+    keepLines: keepNext,
     border,
     children: runsFor(content, {
       bold,
@@ -124,12 +127,13 @@ function cell(content, {
   vMerge,
   before = 0,
   after = 0,
+  keepNext,
   children,
 } = {}) {
   return new TableCell({
     columnSpan: colSpan,
     verticalMerge: vMerge,
-    children: children || [p(content, { bold, underline, color, size, align, before, after })],
+    children: children || [p(content, { bold, underline, color, size, align, before, after, keepNext })],
   });
 }
 
@@ -163,7 +167,8 @@ function table(rows, {
       insideVertical: border,
     },
     margins,
-    rows: rows.map((cells) => new TableRow({ children: cells })),
+    // A row may move whole to the next page but never split mid-row.
+    rows: rows.map((cells) => new TableRow({ children: cells, cantSplit: true })),
   });
 }
 
@@ -172,7 +177,8 @@ const email = (address) => ({ text: address, color: LINK_BLUE, underline: true }
 
 /** Plain black bold heading, as in the reference contract. */
 function heading(text, { underline = false, before = 280, after = 120, align, pageBreakBefore } = {}) {
-  return p(text, { bold: true, underline, before, after, align, pageBreakBefore });
+  // keepNext so a heading never strands at the bottom of a page.
+  return p(text, { bold: true, underline, before, after, align, pageBreakBefore, keepNext: true });
 }
 
 /** Two-column signatory block (borderless table). */
@@ -276,12 +282,14 @@ function policySections(d, children, nextListInstance) {
     for (const para of section.paras || []) {
       children.push(p(para, { before: 60, after: 120, line: 276 }));
     }
-    if (section.breakAfter) children.push(pageBreakPara());
+    /* `section.breakAfter` paginates the fixed-layout PDF; Word reflows text
+       with its own metrics, so honouring those breaks here strands nearly
+       blank pages. The Word file lets sections flow instead. */
   }
 }
 
 function companyDetailsSection(d, children) {
-  children.push(p('Company Details:', { before: 240, after: 60 }));
+  children.push(p('Company Details:', { before: 240, after: 60, keepNext: true }));
   const rows = [
     ['Company Name', d.companyName],
     ['GST No', d.gstNumber],
@@ -337,7 +345,6 @@ function contactsSection(children) {
       before: 80,
     })
   );
-  children.push(pageBreakPara());
 }
 
 function bankSections(children, nextListInstance) {
@@ -405,18 +412,22 @@ function bankSections(children, nextListInstance) {
 /** Acceptance fill-in block + "Yours Sincerely" signatories. */
 function acceptanceSections(children) {
   children.push(heading('Acceptance', { before: 280, after: 160 }));
+  // keepNext on every row chains the heading, table, sign-off and signatories
+  // into one unit that moves whole to the next page instead of splitting.
+  const keep = { keepNext: true };
   children.push(
     table(
       [
-        [cell('Name : *'), cell('Company Stamp *', { vMerge: VerticalMergeType.RESTART })],
-        [cell('Designation : *'), fill({ vMerge: VerticalMergeType.CONTINUE })],
-        [cell('Date : *'), fill({ vMerge: VerticalMergeType.CONTINUE })],
-        [cell('Place : *'), fill({ vMerge: VerticalMergeType.CONTINUE })],
+        [cell('Name : *', keep), cell('Company Stamp *', { vMerge: VerticalMergeType.RESTART, ...keep })],
+        [cell('Designation : *', keep), fill({ vMerge: VerticalMergeType.CONTINUE, ...keep })],
+        [cell('Date : *', keep), fill({ vMerge: VerticalMergeType.CONTINUE, ...keep })],
+        [cell('Place : *', keep), fill({ vMerge: VerticalMergeType.CONTINUE, ...keep })],
       ],
       { widths: [53, 47], border: GRAY_BORDER, margins: LIGHT_MARGINS }
     )
   );
-  children.push(p('Yours Sincerely,', { bold: true, before: 120, after: 1000 }));
+  // keepNext holds the sign-off on the same page as the signatory columns.
+  children.push(p('Yours Sincerely,', { bold: true, before: 120, after: 1000, keepNext: true }));
   children.push(signatoryColumns());
 }
 
@@ -437,6 +448,7 @@ function creditApplicationSections(children) {
       align: AlignmentType.CENTER,
       pageBreakBefore: true,
       after: 40,
+      keepNext: true,
     })
   );
   children.push(
@@ -444,6 +456,7 @@ function creditApplicationSections(children) {
       bold: true,
       align: AlignmentType.CENTER,
       after: 280,
+      keepNext: true,
     })
   );
   children.push(
@@ -476,11 +489,12 @@ function creditApplicationSections(children) {
     )
   );
 
+  // Flows after the application form: on a fresh page when the form fills its
+  // page, or directly below any spilled rows — never leaving a blank page.
   children.push(
     heading('Credit Application Limit', {
       align: AlignmentType.CENTER,
-      pageBreakBefore: true,
-      before: 0,
+      before: 360,
       after: 320,
     })
   );
@@ -513,7 +527,7 @@ function creditApplicationSections(children) {
   // Financial information prints without table borders in the contract —
   // just labels and "Rs." fill-in blanks.
   children.push(
-    p('FINANCIAL INFORMATION:', { bold: true, size: 22, before: 400, after: 120, indent: { left: 600 } })
+    p('FINANCIAL INFORMATION:', { bold: true, size: 22, before: 400, after: 120, indent: { left: 600 }, keepNext: true })
   );
   const finCell = (lines, opts = {}) =>
     new TableCell({
@@ -636,7 +650,7 @@ export async function buildCorporateDocx(kit, { dateLabel } = {}) {
   children.push(p('Greetings from Centre Point Hotels & Resort', { after: 280 }));
   children.push(
     p(
-      'It gives me immense pleasure to inform you that we have customize a special package of Hotel Centre Point, Nagpur & Navi Mumbai that would cater to the hospitality requirements of your esteemed guests.',
+      'It gives me immense pleasure to inform you that we have customize a special package of Hotel Centre Point Nagpur, Navi Mumbai & Amravati that would cater to the hospitality requirements of your esteemed guests.',
       { line: 276, after: 120 }
     )
   );

@@ -133,9 +133,7 @@ const EMPTY_CORPORATE_RATE_ROW = {
   epDouble: '',
 };
 
-/** Room categories per property, exactly as published on the hotels' websites
-    (centrepointnagpur.com/our-rooms, centrepointnavimumbai.com,
-    centrepointamravati.com/rooms). */
+/** Room categories per property, as used on corporate rate contracts. */
 const PROPERTY_ROOM_OPTIONS = {
   nagpur: [
     { category: 'Executive Room', size: '245 sq.ft' },
@@ -146,8 +144,8 @@ const PROPERTY_ROOM_OPTIONS = {
     { category: 'CP Suite', size: '1800 sq.ft' },
   ],
   naviMumbai: [
-    { category: 'Premium Twin Bedroom', size: '305 sq.ft' },
-    { category: 'Club Master Bedroom', size: '255 sq.ft' },
+    { category: 'Premium Room', size: '275 sq.ft' },
+    { category: 'Club Room', size: '325 sq.ft' },
   ],
   amravati: [
     { category: 'Executive', size: '180 sq.ft' },
@@ -245,6 +243,11 @@ function defaultCorporateDetails(lead) {
         propertyName: 'Hotel Centre Point, Navi Mumbai',
         plans: ['CP'],
         rows: defaultRowsForProperty('Hotel Centre Point, Navi Mumbai'),
+      },
+      {
+        propertyName: 'Hotel Centre Point, Amravati',
+        plans: ['CP'],
+        rows: defaultRowsForProperty('Hotel Centre Point, Amravati'),
       },
     ],
     validUntil: '',
