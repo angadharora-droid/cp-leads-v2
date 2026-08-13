@@ -120,7 +120,7 @@ export const CORPORATE_SECTIONS = (d) => {
       'Complimentary Breakfast for Residential Guest',
       'In room Wi-Fi Services.',
       'In room Tea / Coffee maker.',
-      'On the house 02 liter packaged drinking water per person.',
+      'On the house 02 liter packaged drinking water per person per day.',
       'Usage of Gymnasium and Swimming Pool. (Only for Nagpur)',
     ],
   },
