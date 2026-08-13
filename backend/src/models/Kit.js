@@ -133,6 +133,8 @@ const corporateDetailsSchema = new Schema(
     properties: { type: [corporatePropertySchema], default: [] },
     validUntil: { type: String, default: '' },
     extraBedRate: { type: String, default: 'INR 1500 plus taxes' },
+    // Free text printed as an "ADD ON:" bullet list after Rate Inclusions.
+    addOn: { type: String, default: '' },
     notes: { type: String, default: '' },
   },
   { _id: false }

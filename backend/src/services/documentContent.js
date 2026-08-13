@@ -87,7 +87,15 @@ export function planRate(row, code, side) {
 /* Section text transcribed from the sample corporate rate contract. Items are
    either plain strings or {text, bold} objects; `text` may itself be an array
    of string / {text, bold} parts (rich runs). Renderer-agnostic. */
-export const CORPORATE_SECTIONS = (d) => [
+export const CORPORATE_SECTIONS = (d) => {
+  // Free-text "Add On" box on the kit form — each non-empty line prints as a
+  // bullet under an ADD ON section right after RATE INCLUSIONS.
+  const addOnLines = String(d.addOn || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return [
   {
     title: 'RATES IN THIS AGREEMENT ARE:',
     underline: true,
@@ -116,6 +124,9 @@ export const CORPORATE_SECTIONS = (d) => [
       'Usage of Gymnasium and Swimming Pool. (Only for Nagpur)',
     ],
   },
+  ...(addOnLines.length
+    ? [{ title: 'ADD ON:', underline: true, bullets: addOnLines }]
+    : []),
   {
     title: 'AIRPORT TRANSFER:',
     underline: true,
@@ -263,7 +274,8 @@ export const CORPORATE_SECTIONS = (d) => [
       'The contents of this contract and in particular the rates are strictly confidential. The ‘Hotel’ reserves the right to cancel this agreement in the event that the confidentiality is not respected.',
     ],
   },
-];
+  ];
+};
 
 export default {
   formatLongDate,

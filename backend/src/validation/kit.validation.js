@@ -95,6 +95,7 @@ export const corporateDetailsSchema = z.object({
   properties: z.array(corporatePropertySchema).max(10).default([]),
   validUntil: str,
   extraBedRate: str,
+  addOn: z.string().trim().max(5000).default(''),
   notes: z.string().trim().max(5000).default(''),
 });
 

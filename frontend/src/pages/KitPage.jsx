@@ -252,6 +252,7 @@ function defaultCorporateDetails(lead) {
     ],
     validUntil: '',
     extraBedRate: 'INR 1500 plus taxes',
+    addOn: '',
     notes: '',
   };
 }
@@ -1241,6 +1242,27 @@ function CorporateKitForm({ form, update }) {
         <Plus className="h-4 w-4" />
         Add property
       </Button>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-4 w-4 text-primary" />
+            Add On
+          </CardTitle>
+          <CardDescription>
+            Prints as an &ldquo;ADD ON:&rdquo; bullet list right after Rate Inclusions on the
+            agreement — one bullet per line. Leave empty to skip the section.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={form.addOn || ''}
+            onChange={(e) => update('addOn', e.target.value)}
+            rows={3}
+            placeholder={'Late check-out till 15:00hrs on request\nOne way airport drop for stays of 3 nights or more'}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
