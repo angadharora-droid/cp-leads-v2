@@ -1737,12 +1737,100 @@ function KitActions({ kit, setKit, leadId, navigate }) {
 /* Email dialog                                                                */
 /* -------------------------------------------------------------------------- */
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Gmail-style CC input: typed emails become removable chips. */
+function CcChipInput({ emails, onEmailsChange, draft, onDraftChange, disabled }) {
+  const inputRef = useRef(null);
+
+  function commit(text) {
+    const parts = text.split(/[,\s]+/).filter(Boolean);
+    if (!parts.length) return;
+    const valid = parts.filter((p) => EMAIL_RE.test(p));
+    const invalid = parts.filter((p) => !EMAIL_RE.test(p));
+    if (valid.length) {
+      const next = [...emails];
+      for (const v of valid) {
+        if (!next.some((e) => e.toLowerCase() === v.toLowerCase())) next.push(v);
+      }
+      onEmailsChange(next);
+    }
+    onDraftChange(invalid.join(' '));
+    if (invalid.length) toast.error(`Invalid email: ${invalid.join(', ')}`);
+  }
+
+  function removeAt(index) {
+    onEmailsChange(emails.filter((_, i) => i !== index));
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      commit(draft);
+    } else if (e.key === 'Backspace' && !draft && emails.length) {
+      e.preventDefault();
+      removeAt(emails.length - 1);
+    }
+  }
+
+  function handleChange(e) {
+    const value = e.target.value;
+    // Typing/pasting a comma commits everything before it.
+    if (value.includes(',')) commit(value);
+    else onDraftChange(value);
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm transition-[border-color,box-shadow] duration-150 hover:border-ring/40 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25',
+        disabled && 'cursor-not-allowed opacity-50'
+      )}
+      onClick={() => inputRef.current?.focus()}
+    >
+      {emails.map((email, i) => (
+        <span
+          key={email}
+          className="inline-flex items-center gap-1 rounded-full border border-input bg-muted py-0.5 pl-2.5 pr-1 text-xs font-medium"
+        >
+          {email}
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              removeAt(i);
+            }}
+            className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={`Remove ${email}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        disabled={disabled}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => draft.trim() && commit(draft)}
+        placeholder={emails.length ? '' : 'cc@example.com'}
+        className="min-w-[10rem] flex-1 bg-transparent outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+      />
+    </div>
+  );
+}
+
 function EmailDialog({ open, onOpenChange, kit, setKit }) {
   const isEvent = kit.kitType === 'event';
   const hasUploadedAgreement = Boolean(kit.agreementFile);
   const defaultTo = isEvent ? kit.event?.email || '' : kit.corporate?.email || '';
   const [to, setTo] = useState(defaultTo);
-  const [cc, setCc] = useState('');
+  const [ccList, setCcList] = useState([]);
+  const [ccDraft, setCcDraft] = useState('');
   const [docType, setDocType] = useState('proposal');
   const [attachment, setAttachment] = useState(
     hasUploadedAgreement ? 'uploaded' : 'generated'
@@ -1773,11 +1861,30 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
       toast.error('Enter the recipient email address');
       return;
     }
+    // Absorb any email still sitting in the CC input box before sending.
+    let ccEmails = ccList;
+    const leftover = ccDraft.trim();
+    if (leftover) {
+      const parts = leftover.split(/[,\s]+/).filter(Boolean);
+      const invalid = parts.filter((p) => !EMAIL_RE.test(p));
+      if (invalid.length) {
+        toast.error(`Invalid CC email: ${invalid.join(', ')}`);
+        return;
+      }
+      ccEmails = [...ccList];
+      for (const p of parts) {
+        if (!ccEmails.some((e) => e.toLowerCase() === p.toLowerCase())) {
+          ccEmails.push(p);
+        }
+      }
+      setCcList(ccEmails);
+      setCcDraft('');
+    }
     setSending(true);
     try {
       const res = await api.post(`/kits/${kit._id}/send`, {
         to: trimmedTo,
-        cc: cc.trim() || undefined,
+        cc: ccEmails.join(',') || undefined,
         subject: subject.trim() || undefined,
         message: message.trim() || undefined,
         docType: isEvent ? docType : undefined,
@@ -1795,7 +1902,7 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !sending && onOpenChange(next)}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Email to client</DialogTitle>
           <DialogDescription>
@@ -1868,8 +1975,14 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">CC (optional)</Label>
-            <Input value={cc} onChange={(e) => setCc(e.target.value)} />
+            <Label className="text-xs">CC (optional — press Enter or comma to add)</Label>
+            <CcChipInput
+              emails={ccList}
+              onEmailsChange={setCcList}
+              draft={ccDraft}
+              onDraftChange={setCcDraft}
+              disabled={sending}
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Subject (optional — a default is used if blank)</Label>
@@ -1880,7 +1993,7 @@ function EmailDialog({ open, onOpenChange, kit, setKit }) {
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              rows={5}
+              rows={8}
             />
           </div>
         </div>

@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import Lead from '../models/Lead.js';
+import Kit from '../models/Kit.js';
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -85,6 +86,35 @@ export async function getReportData(currentUser, filters = {}) {
     .sort({ createdAt: -1 })
     .lean();
 
+  // Per-lead kit rollup: best status (confirmed > sent > draft) and the most
+  // recent successful email delivery across all of the lead's kits. "Delivered"
+  // means the kit document was emailed to the client (status sent/confirmed).
+  const kits = leads.length
+    ? await Kit.find({ lead: { $in: leads.map((l) => l._id) } })
+        .select('lead status emailLog.status emailLog.sentAt')
+        .lean()
+    : [];
+  const KIT_RANK = { draft: 1, sent: 2, confirmed: 3 };
+  const kitByLead = new Map();
+  let kitsDelivered = 0;
+  for (const kit of kits) {
+    if (kit.status === 'sent' || kit.status === 'confirmed') kitsDelivered += 1;
+    const key = String(kit.lead);
+    const info = kitByLead.get(key) || { count: 0, status: '', deliveredAt: null };
+    info.count += 1;
+    if ((KIT_RANK[kit.status] || 0) > (KIT_RANK[info.status] || 0)) {
+      info.status = kit.status;
+    }
+    for (const log of kit.emailLog || []) {
+      if (log.status !== 'sent' || !log.sentAt) continue;
+      const time = new Date(log.sentAt).getTime();
+      if (!info.deliveredAt || time > info.deliveredAt.getTime()) {
+        info.deliveredAt = new Date(time);
+      }
+    }
+    kitByLead.set(key, info);
+  }
+
   const inRange = makeRangeCheck(filters);
 
   const rows = [];
@@ -111,9 +141,13 @@ export async function getReportData(currentUser, filters = {}) {
       inRange(a.createdAt)
     );
 
+    const leadKits = kitByLead.get(leadId);
     rows.push({
       ...base,
       status: lead.status || '',
+      kitCount: leadKits?.count || 0,
+      kitStatus: leadKits?.status || '',
+      kitDeliveredDate: leadKits?.deliveredAt || null,
       assignedToName: lead.assignedTo?.name || '',
       contactPerson: lead.contactPerson || '',
       designation: lead.designation || '',
@@ -182,6 +216,7 @@ export async function getReportData(currentUser, filters = {}) {
   const summary = {
     totalLeads: rows.length,
     contracted: rows.filter((r) => r.status === 'Contracted').length,
+    kitsDelivered,
     totalVisits: visits.length,
     openFollowUps: followUps.filter((f) => f.status === 'open').length,
     openActionPoints: actionPoints.filter((a) => a.status === 'open').length,
@@ -245,6 +280,8 @@ export async function generateOverallExcel(currentUser, filters = {}) {
     { header: 'Contacted For', key: 'contactedFor', width: 15 },
     { header: 'Lead Date', key: 'leadDate', width: 14, style: DATE_FMT },
     { header: 'Status', key: 'status', width: 16 },
+    { header: 'Kit Status', key: 'kitStatusLabel', width: 14 },
+    { header: 'Kit Delivered On', key: 'kitDeliveredDate', width: 16, style: DATE_FMT },
     { header: 'Assigned To', key: 'assignedToName', width: 20 },
     { header: 'Visits', key: 'visitCount', width: 8 },
     { header: 'Last Visit', key: 'lastVisitDate', width: 14, style: DATE_FMT },
@@ -253,9 +290,12 @@ export async function generateOverallExcel(currentUser, filters = {}) {
     { header: 'Open Action Points', key: 'openActionPoints', width: 17 },
     { header: 'Created At', key: 'createdAt', width: 18, style: DATETIME_FMT },
   ]);
+  const KIT_STATUS_LABELS = { draft: 'Draft', sent: 'Delivered', confirmed: 'Confirmed' };
   for (const row of rows) {
     leadSheet.addRow({
       ...row,
+      kitStatusLabel: KIT_STATUS_LABELS[row.kitStatus] || '',
+      kitDeliveredDate: asDate(row.kitDeliveredDate),
       leadDate: asDate(row.leadDate),
       lastVisitDate: asDate(row.lastVisitDate),
       nextFollowUpDate: asDate(row.nextFollowUpDate),

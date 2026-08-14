@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   FilterX,
   Search,
+  Package,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -301,7 +302,7 @@ export default function ReportsPage() {
   const headerDescription = useMemo(() => {
     if (isLoading || !summary) return 'Loading the overall report…';
     const scope = hasActiveFilters ? ' (filtered)' : '';
-    return `${summary.totalLeads} leads · ${summary.contracted} contracted · ${summary.totalVisits} visits${scope}`;
+    return `${summary.totalLeads} leads · ${summary.contracted} contracted · ${summary.kitsDelivered ?? 0} kits delivered · ${summary.totalVisits} visits${scope}`;
   }, [isLoading, summary, hasActiveFilters]);
 
   return (
@@ -412,7 +413,7 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           icon={FolderKanban}
           label="Leads"
@@ -423,6 +424,12 @@ export default function ReportsPage() {
           icon={BarChart3}
           label="Contracted"
           value={summary?.contracted ?? 0}
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Package}
+          label="Kits delivered"
+          value={summary?.kitsDelivered ?? 0}
           loading={isLoading}
         />
         <StatCard
@@ -551,6 +558,12 @@ export default function ReportsPage() {
                       onSort={handleSort}
                     />
                     <SortableHead
+                      label="Kit delivered"
+                      sortKey="kitDeliveredDate"
+                      sort={sort}
+                      onSort={handleSort}
+                    />
+                    <SortableHead
                       label="Assigned to"
                       sortKey="assignedToName"
                       sort={sort}
@@ -603,6 +616,24 @@ export default function ReportsPage() {
                       </TableCell>
                       <TableCell className="align-top">
                         <StatusBadge status={row.status} />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {row.kitStatus === 'confirmed' ? (
+                          <Badge variant="default">Confirmed</Badge>
+                        ) : row.kitStatus === 'sent' ? (
+                          <Badge variant="accent">Delivered</Badge>
+                        ) : row.kitStatus === 'draft' ? (
+                          <span className="text-sm italic text-muted-foreground">
+                            Draft
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                        {row.kitDeliveredDate ? (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {formatDate(row.kitDeliveredDate)}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell className="hidden align-top text-sm text-muted-foreground lg:table-cell">
                         {row.assignedToName || '—'}
