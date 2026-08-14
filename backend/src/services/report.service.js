@@ -96,9 +96,7 @@ export async function getReportData(currentUser, filters = {}) {
     : [];
   const KIT_RANK = { draft: 1, sent: 2, confirmed: 3 };
   const kitByLead = new Map();
-  let kitsDelivered = 0;
   for (const kit of kits) {
-    if (kit.status === 'sent' || kit.status === 'confirmed') kitsDelivered += 1;
     const key = String(kit.lead);
     const info = kitByLead.get(key) || { count: 0, status: '', deliveredAt: null };
     info.count += 1;
@@ -216,7 +214,11 @@ export async function getReportData(currentUser, filters = {}) {
   const summary = {
     totalLeads: rows.length,
     contracted: rows.filter((r) => r.status === 'Contracted').length,
-    kitsDelivered,
+    // Distinct companies (leads) that have been emailed at least one kit
+    // document — not the number of individual emails or kits sent.
+    kitsDelivered: rows.filter(
+      (r) => r.kitStatus === 'sent' || r.kitStatus === 'confirmed'
+    ).length,
     totalVisits: visits.length,
     openFollowUps: followUps.filter((f) => f.status === 'open').length,
     openActionPoints: actionPoints.filter((a) => a.status === 'open').length,
