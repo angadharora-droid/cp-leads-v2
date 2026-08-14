@@ -281,7 +281,7 @@ export async function generateOverallExcel(currentUser, filters = {}) {
     { header: 'Lead Date', key: 'leadDate', width: 14, style: DATE_FMT },
     { header: 'Status', key: 'status', width: 16 },
     { header: 'Kit Status', key: 'kitStatusLabel', width: 14 },
-    { header: 'Kit Delivered On', key: 'kitDeliveredDate', width: 16, style: DATE_FMT },
+    { header: 'Email Delivered On', key: 'kitDeliveredDate', width: 17, style: DATE_FMT },
     { header: 'Assigned To', key: 'assignedToName', width: 20 },
     { header: 'Visits', key: 'visitCount', width: 8 },
     { header: 'Last Visit', key: 'lastVisitDate', width: 14, style: DATE_FMT },

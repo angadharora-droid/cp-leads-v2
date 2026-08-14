@@ -12,7 +12,7 @@ import {
   ArrowUpDown,
   FilterX,
   Search,
-  Package,
+  Mail,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -302,7 +302,7 @@ export default function ReportsPage() {
   const headerDescription = useMemo(() => {
     if (isLoading || !summary) return 'Loading the overall report…';
     const scope = hasActiveFilters ? ' (filtered)' : '';
-    return `${summary.totalLeads} leads · ${summary.contracted} contracted · ${summary.kitsDelivered ?? 0} kits delivered · ${summary.totalVisits} visits${scope}`;
+    return `${summary.totalLeads} leads · ${summary.contracted} contracted · ${summary.kitsDelivered ?? 0} emails delivered · ${summary.totalVisits} visits${scope}`;
   }, [isLoading, summary, hasActiveFilters]);
 
   return (
@@ -427,8 +427,8 @@ export default function ReportsPage() {
           loading={isLoading}
         />
         <StatCard
-          icon={Package}
-          label="Kits delivered"
+          icon={Mail}
+          label="Emails delivered"
           value={summary?.kitsDelivered ?? 0}
           loading={isLoading}
         />
@@ -558,7 +558,7 @@ export default function ReportsPage() {
                       onSort={handleSort}
                     />
                     <SortableHead
-                      label="Kit delivered"
+                      label="Email delivered"
                       sortKey="kitDeliveredDate"
                       sort={sort}
                       onSort={handleSort}
