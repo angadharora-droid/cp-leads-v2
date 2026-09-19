@@ -1,9 +1,26 @@
 import mongoose from 'mongoose';
 import env from './env.js';
 
+// Used when MONGODB_URI names a cluster but no database, e.g. the Atlas
+// "connect your application" string (mongodb+srv://user:pass@host/?appName=x).
+// Without this the driver silently lands in a database called "test".
+const DEFAULT_DB_NAME = 'cph_leads_crm';
+
+function databaseNameIn(uri) {
+  const afterScheme = uri.slice(uri.indexOf('://') + 3);
+  const beforeQuery = afterScheme.split('?')[0];
+  const slash = beforeQuery.indexOf('/');
+  return slash === -1 ? '' : beforeQuery.slice(slash + 1);
+}
+
 export async function connectDB() {
   mongoose.set('strictQuery', true);
-  await mongoose.connect(env.MONGODB_URI);
+  const options = {};
+  if (!databaseNameIn(env.MONGODB_URI)) {
+    options.dbName = DEFAULT_DB_NAME;
+    console.log(`[db] MONGODB_URI has no database name; using "${DEFAULT_DB_NAME}"`);
+  }
+  await mongoose.connect(env.MONGODB_URI, options);
   const { host, port, name } = mongoose.connection;
   console.log(`[db] connected to mongodb ${host}:${port}/${name}`);
   await dropStaleIndexes();
