@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Clock, Route } from 'lucide-react';
+import { ArrowRightCircle, Clock, FileDiff, Mail, PenLine, Route } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
 import { stageInfo } from '@/lib/enquiryStages';
-import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,12 +13,27 @@ function daysLabel(days) {
   return `${days} day${days === 1 ? '' : 's'}`;
 }
 
+/** "Open for 12 days", "Won after 10 days", "Lost within a day". */
+function summaryLabel(summary) {
+  if (summary.open) return `Open for ${daysLabel(summary.totalDays)}`;
+  if (!summary.totalDays) return `${summary.stageLabel} within a day`;
+  return `${summary.stageLabel} after ${daysLabel(summary.totalDays)}`;
+}
+
+const EVENT_ICONS = {
+  email: Mail,
+  revision: FileDiff,
+  signature: PenLine,
+  stage: ArrowRightCircle,
+};
+
 /**
  * The life cycle of one enquiry: a block for every stage it reached, in
- * order, each filled with the facts of that stage — document numbers, who
- * they went to, who signed and how, the advance or credit that won it, why
- * it was lost or cancelled — with the days spent in each stage and what
- * happened while it was there.
+ * order, each with the facts of that stage — document numbers, who they went
+ * to, who signed and how, the advance or credit that won it, why it was lost
+ * or cancelled — the days spent there, and what happened while it was there:
+ * emails, edits (with what changed), signatures, moves. Every time is hotel
+ * time, formatted by the server, so the card reads the same everywhere.
  *
  * @param {object} props
  * @param {string} props.enquiryId
@@ -57,9 +71,7 @@ export default function EnquiryLifecycle({ enquiryId, version }) {
           {summary ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-              {summary.open
-                ? `Open for ${daysLabel(summary.totalDays)}`
-                : `${summary.stageLabel} after ${daysLabel(summary.totalDays)}`}
+              {summaryLabel(summary)}
             </p>
           ) : null}
         </div>
@@ -73,33 +85,36 @@ export default function EnquiryLifecycle({ enquiryId, version }) {
             <Skeleton className="h-16 w-full" />
           </div>
         ) : (
-          <ol className="relative space-y-5">
+          <ol className="relative space-y-6">
             {data.blocks.map((block, i) => {
               const info = stageInfo(block.stage);
               const last = i === data.blocks.length - 1;
+              const stay = block.days === null || block.days === undefined ? '' : block.current ? `${daysLabel(block.days)} so far` : `${daysLabel(block.days)} here`;
               return (
                 <li key={`${block.stage}-${i}`} className="relative pl-7">
                   {/* The rail joining one stage to the next. */}
-                  {!last ? <span className="absolute left-[7px] top-5 h-[calc(100%+0.5rem)] w-px bg-border" aria-hidden="true" /> : null}
+                  {!last ? <span className="absolute left-[7px] top-5 h-[calc(100%+0.75rem)] w-px bg-border" aria-hidden="true" /> : null}
                   <span
                     className={cn('absolute left-0 top-1 h-[15px] w-[15px] rounded-full border-2 border-background', block.current && 'ring-2 ring-offset-1')}
                     style={{ backgroundColor: info.color, '--tw-ring-color': info.color }}
                     aria-hidden="true"
                   />
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                    <p className="text-sm font-semibold text-foreground">
-                      {block.label}
-                      {block.current ? <span className="ml-2 text-xs font-medium text-muted-foreground">current stage</span> : null}
-                    </p>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">{block.label}</p>
+                      {block.current ? (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Current stage</span>
+                      ) : null}
+                      {stay ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{stay}</span> : null}
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      {block.at ? formatDateTime(block.at) : ''}
+                      {block.atLabel}
                       {block.byName ? ` · ${block.byName}` : ''}
-                      {block.days !== null && block.days !== undefined ? ` · ${daysLabel(block.days)} in this stage` : ''}
                     </p>
                   </div>
 
                   {block.facts.length ? (
-                    <dl className="mt-2 grid gap-x-6 gap-y-1.5 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+                    <dl className="mt-2 grid gap-x-6 gap-y-2 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
                       {block.facts.map((fact) => (
                         <div key={fact.label} className="min-w-0">
                           <dt className="text-xs text-muted-foreground">{fact.label}</dt>
@@ -110,18 +125,34 @@ export default function EnquiryLifecycle({ enquiryId, version }) {
                   ) : null}
 
                   {block.events.length ? (
-                    <ul className="mt-2 space-y-1">
-                      {block.events.map((event, j) => (
-                        <li key={j} className="flex gap-2 text-xs text-muted-foreground">
-                          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-                          <span className="min-w-0">
-                            <span className="text-foreground">{event.text}</span>
-                            {' · '}
-                            {formatDateTime(event.at)}
-                            {event.byName ? ` · ${event.byName}` : ''}
-                          </span>
-                        </li>
-                      ))}
+                    <ul className="mt-2.5 space-y-1.5">
+                      {block.events.map((event, j) => {
+                        const Icon = EVENT_ICONS[event.kind] || ArrowRightCircle;
+                        return (
+                          <li key={j} className="flex gap-2 text-xs text-muted-foreground">
+                            <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+                            <div className="min-w-0 flex-1">
+                              <p>
+                                <span className="text-foreground">{event.text}</span>
+                                <span className="whitespace-nowrap">
+                                  {' · '}
+                                  {event.atLabel}
+                                  {event.byName ? ` · ${event.byName}` : ''}
+                                </span>
+                              </p>
+                              {event.details?.length ? (
+                                <ul className="mt-1 space-y-0.5 border-l-2 border-border pl-2.5">
+                                  {event.details.map((line, k) => (
+                                    <li key={k} className="text-foreground/80">
+                                      {line}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : null}
                 </li>
