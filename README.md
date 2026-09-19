@@ -88,3 +88,49 @@ Every lead gets an auto reference: `CPH-[CITY]-[DDMMYY]-[###]` (e.g. `CPH-MUMBAI
 
 ## Pipeline stages
 `New → Contacted → Qualified → Proposal → Negotiation → Won / Lost`
+
+## Deploy (Docker / Railway)
+
+The repo root has a `Dockerfile` that builds the React app and runs it together
+with the API in one Node process, so a single Railway service hosts the whole
+CRM. The image includes LibreOffice Writer, which converts uploaded Word
+agreements to PDF before they are emailed.
+
+Local check of the production image (needs Docker Desktop):
+
+```bash
+docker compose up --build
+# open http://localhost:5000
+```
+
+Railway:
+
+1. New project → Deploy from GitHub repo → pick this repo. `railway.json`
+   tells Railway to build the `Dockerfile` and to health-check `/api/health`.
+2. Add a MongoDB (Railway plugin or MongoDB Atlas) and set these variables on
+   the service:
+
+   | Variable | Value |
+   | --- | --- |
+   | `MONGODB_URI` | connection string, including the database name |
+   | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | long random strings |
+   | `CRED_ENCRYPTION_KEY` | long random string (encrypts linked mailbox passwords) |
+   | `CLIENT_ORIGIN` | the service's public URL, e.g. `https://cp-leads-v2.up.railway.app` (used for e-sign links in emails) |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | optional shared mailbox for proposals |
+
+   `PORT`, `NODE_ENV` and `SERVE_CLIENT_DIR` are set by the Dockerfile and
+   Railway; do not override them.
+3. Settings → Networking → Generate Domain, then put that URL in
+   `CLIENT_ORIGIN` and redeploy.
+4. Create the first admin from your machine against the same database:
+
+   ```bash
+   cd backend
+   MONGODB_URI="<the same connection string>" npm run seed        # admin only (wipes users/leads)
+   MONGODB_URI="<the same connection string>" node scripts/seed-demo.mjs   # additive demo data
+   ```
+
+Splitting the app across two hosts still works: build the frontend with
+`VITE_API_BASE_URL` pointing at the API and set `CLIENT_ORIGIN` on the API to
+the frontend's origin. `backend/nixpacks.toml` and `frontend/vercel.json`
+remain for that layout.

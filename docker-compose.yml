@@ -1,0 +1,32 @@
+# Local run of the production image with a throwaway MongoDB.
+#
+#   docker compose up --build
+#   open http://localhost:5000
+#
+# Secrets (JWT secrets, SMTP, CRED_ENCRYPTION_KEY) are read from backend/.env
+# when that file exists; the values below override the database and origin.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/cph_leads_crm
+      CLIENT_ORIGIN: http://localhost:5000
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:
