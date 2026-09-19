@@ -780,9 +780,9 @@ function acceptanceCard(signature) {
 /* ------------------------------- Document ---------------------------------- */
 
 async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature }) {
-  // The proposal shows the rack rate beside each offered rate; the contract
-  // carries the agreed rates alone.
-  const showRack = kind === 'proposal';
+  // Both documents show the rack rate beside each offered rate, so the client
+  // sees the published rate and the rate they were given.
+  const showRack = kind === 'proposal' || kind === 'contract';
   const content = [
     factsStrip(enquiry, kind),
     guestCards(enquiry, lead),
