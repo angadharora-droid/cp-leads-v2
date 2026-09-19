@@ -1,19 +1,19 @@
-import BanquetSession from '../models/BanquetSession.js';
 import { renderToBuffer } from './pdf.service.js';
 import { CP_HEADER_LOGO, CP_HR_LOGO } from './pdfAssets.js';
 
 /*
- * Banquet documents, page for page after the house "Final Formats":
+ * Banquet documents, page for page after the house "Final Formats"
+ * (Letter, Times New Roman 12, maroon section bars, black grid tables):
  *
- *   Proposal / Contract  — one shared body (Letter, Times New Roman 12,
- *                          maroon section bars, black grid tables), the
- *                          contract adding its number and date of confirmation.
- *   Signed copy          — the same document with the client's digital
- *                          acceptance stamped at the end.
  *   Pro-Forma Invoice    — the IDS-style invoice print (HCP.PI.00000).
  *   Addendum             — "Contract Addendum Sheet" (HCP.AD.00000.00): the
- *                          changes agreed after the contract went out.
+ *                          changes agreed after the contract went out, and
+ *                          its signed copy with the client's acceptance.
  *   Credit Application   — the one-page form used for PPS / one-time credit.
+ *
+ * The proposal, the contract and their signed copies print in the house
+ * sheet style from proposalPdf.service.js, which shares the data helpers
+ * exported below.
  *
  * Fixed wording is copied from the templates verbatim; only the client and
  * event values are filled in.
@@ -21,7 +21,6 @@ import { CP_HEADER_LOGO, CP_HR_LOGO } from './pdfAssets.js';
 
 const MAROON = '#921B62';
 const RULE = '#823909';
-const GRAY = '#EBEBEB';
 const BLACK = '#000000';
 
 // Word grid widths are in twips; pdfmake wants points.
@@ -42,7 +41,7 @@ const cols = (twips) => {
 
 /* --------------------------------- Helpers --------------------------------- */
 
-function safeName(value, fallback) {
+export function safeName(value, fallback) {
   return String(value || fallback).replace(/[\\/:*?"<>|]/g, '');
 }
 
@@ -98,7 +97,7 @@ function fixed2(amount) {
 }
 
 /** Venues held: the primary first, then any add-on rooms. */
-function fnVenueDocs(fn) {
+export function fnVenueDocs(fn) {
   const list = fn.venues?.length ? fn.venues : [fn.venue, ...(fn.addOnRooms || [])];
   return list.filter(Boolean);
 }
@@ -110,27 +109,16 @@ function fnVenueLabel(fn) {
   return addOns.length ? `${primary} (add-on rooms: ${addOns.join(', ')})` : primary;
 }
 
-/**
- * The Venue table cell: the primary venue, then the add-on rooms on the next
- * line at the same smaller size the Date column uses for session times.
- */
-function fnVenueCell(fn) {
-  const [primary, ...addOns] = fnVenueDocs(fn).map((v) => v?.name).filter(Boolean);
-  if (!primary) return '';
-  if (!addOns.length) return primary;
-  return [primary, { text: `\nAdd-on rooms: ${addOns.join(', ')}`, fontSize: 10 }];
-}
-
-function fnSessionDocs(fn) {
+export function fnSessionDocs(fn) {
   const list = fn.sessions?.length ? fn.sessions : [fn.session].filter(Boolean);
   return list.filter(Boolean);
 }
 
-function fnName(fn) {
+export function fnName(fn) {
   return fn.functionType?.name || fn.name || '';
 }
 
-function sessionTimes(s) {
+export function sessionTimes(s) {
   if (!s) return '';
   const start = s.startTime || '';
   const end = s.endTime || '';
@@ -138,7 +126,7 @@ function sessionTimes(s) {
   return start || end || s.name || '';
 }
 
-function menuLabel(fn) {
+export function menuLabel(fn) {
   const parts = [];
   if (fn.menuType?.name) parts.push(fn.menuType.name);
   for (const item of fn.addOns || []) if (item?.name) parts.push(item.name);
@@ -146,7 +134,7 @@ function menuLabel(fn) {
 }
 
 /** The rate offered for a picked option: the enquiry's line rate, else the catalog rate. */
-function lineRate(fn, item) {
+export function lineRate(fn, item) {
   const line = (fn.lineRates || []).find((l) => String(l.item?._id || l.item) === String(item?._id));
   return line ? Number(line.rate) || 0 : Number(item?.rate) || 0;
 }
@@ -163,7 +151,7 @@ function perPax(fn) {
  * offered line rates comes from before line rates existed — it means
  * "never set", not "free" — so the rack rate stands in.
  */
-function fnTotal(fn) {
+export function fnTotal(fn) {
   const proposed = Number(fn.proposedRate) || 0;
   if (proposed > 0 || fn.lineRates?.length) return proposed;
   return Number(fn.rackRate) || 0;
@@ -179,14 +167,14 @@ function menuItems(fn) {
  * menu only, at the rates offered. Liquor and requirements have their own
  * lines under Other Requirements, so they are not folded in here.
  */
-function menuRate(fn) {
+export function menuRate(fn) {
   const items = menuItems(fn);
   if (!items.length) return perPax(fn);
   return items.filter((item) => item.pricing !== 'flat').reduce((sum, item) => sum + lineRate(fn, item), 0);
 }
 
 /** Estimated revenue of the menu alone: rate x minimum guaranteed, plus any flat-priced menu item. */
-function menuRevenue(fn) {
+export function menuRevenue(fn) {
   const items = menuItems(fn);
   if (!items.length) return fnTotal(fn);
   const pax = Number(fn.pax) || 0;
@@ -199,32 +187,17 @@ function extrasRevenue(fn) {
   return Math.max(0, fnTotal(fn) - menuRevenue(fn));
 }
 
-function sortedFunctions(enquiry) {
+export function sortedFunctions(enquiry) {
   return [...(enquiry.functions || [])].sort(
     (a, b) => new Date(a.date || 0) - new Date(b.date || 0)
   );
 }
 
-function eventTypes(enquiry) {
+export function eventTypes(enquiry) {
   return [...new Set((enquiry.functions || []).map(fnName).filter(Boolean))].join(' / ');
 }
 
-function eventDates(enquiry) {
-  const dates = (enquiry.functions || [])
-    .map((f) => f.date)
-    .filter(Boolean)
-    .map((d) => new Date(d))
-    .sort((a, b) => a - b);
-  if (dates.length) {
-    const first = ddmmyyyy(dates[0]);
-    const last = ddmmyyyy(dates[dates.length - 1]);
-    return first === last ? first : `${first} - ${last}`;
-  }
-  if (enquiry.room?.checkIn) return `${ddmmyyyy(enquiry.room.checkIn)} - ${ddmmyyyy(enquiry.room.checkOut)}`;
-  return '';
-}
-
-function guestOrOrganization(enquiry, lead) {
+export function guestOrOrganization(enquiry, lead) {
   const parts = [];
   for (const value of [enquiry.contactName, lead?.businessName]) {
     if (value && !parts.includes(value)) parts.push(value);
@@ -232,7 +205,7 @@ function guestOrOrganization(enquiry, lead) {
   return parts.join(' / ');
 }
 
-function eventTotal(enquiry) {
+export function eventTotal(enquiry) {
   return (enquiry.functions || []).reduce((sum, fn) => sum + fnTotal(fn), 0);
 }
 
@@ -265,33 +238,12 @@ function bar(text, { span = 1, bold = true, alignment = 'center', margin } = {})
   return row;
 }
 
-/** Maroon side label (left column of the terms tables). */
-function side(text, { margin = [1, 2, 0, 0] } = {}) {
-  return { text, color: '#ffffff', bold: true, fillColor: MAROON, margin };
-}
-
-function label(text, extra = {}) {
-  return { text, ...extra };
-}
-
 function centered(text, extra = {}) {
   return { text, alignment: 'center', ...extra };
 }
 
 function blankCells(count) {
   return Array.from({ length: count }, () => ({ text: '' }));
-}
-
-/** Rough line count so tall header rows can be vertically centred like Word's. */
-function estimateLines(text, width, fontSize = 11) {
-  const perLine = Math.max(1, Math.floor((width - 8) / (fontSize * 0.5)));
-  return Math.max(1, Math.ceil(String(text).length / perLine));
-}
-
-function vcentered(text, width, rowHeight, { fontSize = 11, bold = true } = {}) {
-  const lines = estimateLines(text, width, fontSize);
-  const top = Math.max(0, (rowHeight - lines * fontSize * 1.15) / 2 - 1);
-  return { text, bold, fontSize, alignment: 'center', margin: [0, top, 0, 0] };
 }
 
 function table(widths, body, extra = {}) {
@@ -342,722 +294,6 @@ function docDefinition(content, { number, footerDate, images = {} } = {}) {
   };
 }
 
-/* ------------------------------ Page 1 sections ---------------------------- */
-
-function guestSection(enquiry, lead, kind) {
-  const isContract = kind === 'contract';
-  const doc = isContract ? enquiry.contract : enquiry.proposal;
-  const rows = [
-    [isContract ? 'Contract Number' : 'Proposal Number', doc?.number || '', GRAY],
-    [isContract ? 'Date of Confirmation' : 'Date of Proposal', ddmmyyyy(doc?.generatedAt) || ddmmyyyy(new Date())],
-    ['Guest Name/Organization', guestOrOrganization(enquiry, lead), null, true],
-    ['Event Type', eventTypes(enquiry)],
-    ['Event Dates', eventDates(enquiry)],
-    ['Mobile Number', enquiry.contactPhone || lead?.mobile || ''],
-    ['Email Address', enquiry.contactEmail || lead?.email || ''],
-  ];
-  const billing = [
-    ['Billing Name', enquiry.billingName || lead?.businessName || ''],
-    ['GST Number', enquiry.gstNumber || ''],
-    ['PAN Number', enquiry.panNumber || ''],
-    ['Payment Terms', enquiry.paymentTerms || ''],
-  ];
-  const kv = ([k, v, fill, bold]) => [
-    label(k, fill ? { fillColor: fill } : {}),
-    centered(v, { ...(fill ? { fillColor: fill } : {}), ...(bold ? { bold: true } : {}) }),
-  ];
-  return table(
-    cols([2825, 8414]),
-    [
-      bar(isContract ? 'CONTRACT' : 'PROPOSAL', { span: 2, bold: false }),
-      [{ text: '', colSpan: 2 }, {}],
-      bar('Guest and Function Information', { span: 2, bold: false }),
-      ...rows.map(kv),
-      bar('Billing instruction', { span: 2, bold: false }),
-      ...billing.map(kv),
-    ],
-    { tableExtra: { heights: 17, dontBreakRows: true } }
-  );
-}
-
-function roomRequirementSection(enquiry) {
-  // Date columns widened from the template so dd/mm/yyyy stays on one line.
-  const widths = cols([1230, 1230, 1524, 1700, 899, 987, 1439, 2232]);
-  const headerHeight = HEAD;
-  const headers = [
-    'Check in Date',
-    'Check out Date',
-    'Occupancy Type',
-    'Category',
-    'Meal plan',
-    'No. of Rooms',
-    'Rate exclusive of taxes',
-    'Estimated Revenue',
-  ].map((h, i) => vcentered(h, widths[i], headerHeight));
-
-  const room = enquiry.room;
-  const rows = [];
-  if (room && (room.checkIn || room.checkOut || room.rooms)) {
-    rows.push([
-      centered(ddmmyyyy(room.checkIn), { fontSize: 10 }),
-      centered(ddmmyyyy(room.checkOut), { fontSize: 10 }),
-      centered(''),
-      centered(room.notes || ''),
-      centered(''),
-      centered(room.rooms || ''),
-      centered(''),
-      centered(''),
-    ]);
-    rows.push(blankCells(8));
-  } else {
-    rows.push(blankCells(8), blankCells(8));
-  }
-  return table(widths, [bar('Room Requirement Information', { span: 8 }), headers, ...rows], {
-    tableExtra: { heights: (i) => (i === 0 ? ROW : i === 1 ? headerHeight : LINE), dontBreakRows: true },
-    nodeExtra: { margin: [0, 10, 0, 0] },
-  });
-}
-
-function otherRoomCategorySection() {
-  const body = [
-    [
-      {
-        text: 'In case of any other Room category, the room would be charged at the following rates.',
-        bold: true,
-        rowSpan: 4,
-        margin: [13, 5, 13, 0],
-      },
-      { text: 'Rooms Category', bold: true, margin: [38, 1, 0, 0] },
-      { text: 'Rates', bold: true, alignment: 'center', margin: [0, 1, 0, 0] },
-    ],
-    [{}, { text: '' }, { text: '' }],
-    [{}, { text: '' }, { text: '' }],
-    [{}, { text: '' }, { text: '' }],
-  ];
-  return table(cols([4883, 3150, 3220]), body, {
-    tableExtra: { heights: [ROW, LINE, LINE, LINE], dontBreakRows: true },
-    nodeExtra: { margin: [0, 10, 0, 0] },
-  });
-}
-
-const RATE_INCLUSIONS = [
-  'Complimentary internet facilities(Wi-Fi)',
-  'Check-in Time 14 00 Check Out Time 12 00',
-  'Extra Buffet Breakfast @ Rs. 799/- + gst.',
-  'Early Check-In after 07 00 Hrs. will be charged half day tariff (As per availability)',
-  'Late Check-Out till 18 00 Hrs. will be charged half day tariff after that full day tariff will be applicable (As per availability)',
-];
-
-function inclusionsSection() {
-  return table(
-    cols([1349, 9902]),
-    [
-      [
-        side('Rates Inclusions', { margin: [1, 10, 0, 0] }),
-        { ol: RATE_INCLUSIONS, type: 'lower-roman', margin: [6, 2, 30, 2] },
-      ],
-    ],
-    {
-      tableExtra: { dontBreakRows: true },
-      nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true },
-    }
-  );
-}
-
-/* ------------------------------ Page 2 sections ---------------------------- */
-
-function eventMealSection(enquiry) {
-  // Date column widened from the template so dd/mm/yyyy stays on one line.
-  const widths = cols([1330, 1413, 1261, 1750, 1627, 1541, 2323]);
-  const headerHeight = HEAD;
-  const headers = ['Date', 'Event Type', 'Venue', 'Minimum Guaranteed', 'Type of Menu', 'Rate', 'Estimated Revenue'].map(
-    (h, i) => vcentered(h, widths[i], headerHeight)
-  );
-  const rows = sortedFunctions(enquiry).map((fn) => {
-    const times = fnSessionDocs(fn).map(sessionTimes).filter(Boolean);
-    return [
-      centered([ddmmyyyy(fn.date), ...times].join('\n'), { fontSize: 10 }),
-      centered(fnName(fn)),
-      centered(fnVenueCell(fn)),
-      centered(fn.pax ? String(fn.pax) : ''),
-      centered(menuLabel(fn)),
-      centered(menuRate(fn) ? inr(menuRate(fn)) : ''),
-      centered(menuRevenue(fn) ? inr(menuRevenue(fn)) : ''),
-    ];
-  });
-  if (!rows.length) rows.push(blankCells(7));
-  return table(widths, [bar('Event and Meal Details', { span: 7 }), headers, ...rows], {
-    tableExtra: { heights: (i) => (i === 0 ? ROW : i === 1 ? headerHeight : LINE), dontBreakRows: true },
-  });
-}
-
-/**
- * The template's three fixed lines (alcohol, soft beverages, AV) with
- * "Kindly Advise", the liquor picked filling the first; every other
- * requirement from Banquet Setup follows as its own line.
- */
-function otherRequirementsSection(enquiry) {
-  const widths = cols([2832, 3296, 2602, 2556]);
-  const liquor = [];
-  const extras = [];
-  for (const fn of enquiry.functions || []) {
-    const pax = Number(fn.pax) || 0;
-    const describe = (item) => {
-      const flat = item.pricing === 'flat';
-      const count = flat ? 1 : pax;
-      const rate = lineRate(fn, item);
-      return {
-        name: item.name,
-        details: `${fnName(fn)} · ${ddmmyyyy(fn.date)}${flat ? '' : ` · ${pax} pax`}`,
-        rate: rate ? inr(rate) : '',
-        revenue: rate ? inr(count * rate) : '',
-      };
-    };
-    for (const item of fn.liquor || []) if (item?.name) liquor.push(describe(item));
-    for (const item of fn.requirements || []) if (item?.name) extras.push(describe(item));
-    // Hall charges ticked for the rooms held, each as its own flat line.
-    for (const v of fn.hallChargeVenues || []) {
-      if (v?.name && Number(v.hallCharge) > 0) {
-        extras.push({
-          name: `Hall Charges — ${v.name}`,
-          details: `${fnName(fn)} · ${ddmmyyyy(fn.date)}`,
-          rate: inr(v.hallCharge),
-          revenue: inr(v.hallCharge),
-        });
-      }
-    }
-    if (fn.additionalRequirement) {
-      extras.push({ name: fn.additionalRequirement, details: `${fnName(fn)} · ${ddmmyyyy(fn.date)}`, rate: '', revenue: '' });
-    }
-  }
-  const pad = [0, 3, 0, 3];
-  const fixedRow = (title, items) => [
-    { text: title, bold: true, alignment: 'center', margin: pad },
-    items.length
-      ? {
-          stack: items.map((i) => ({
-            text: [{ text: i.name }, { text: `\n${i.details}`, fontSize: 10, color: '#444444' }],
-          })),
-          margin: pad,
-        }
-      : { text: 'Kindly Advise', alignment: 'center', margin: pad },
-    { text: items.map((i) => i.rate).join('\n'), alignment: 'center', margin: pad },
-    { text: items.map((i) => i.revenue).join('\n'), alignment: 'center', margin: pad },
-  ];
-  const body = [
-    bar('Other Requirements', { span: 4 }),
-    [
-      { text: 'Particulars', bold: true, alignment: 'center', margin: pad },
-      { text: 'Requirement Details', bold: true, alignment: 'center', margin: pad },
-      { text: 'Rate', bold: true, alignment: 'center', margin: pad },
-      { text: 'Estimated Revenue', bold: true, alignment: 'center', margin: pad },
-    ],
-    fixedRow('Alcoholic Beverages', liquor),
-    fixedRow('Soft Beverages', []),
-    fixedRow('AV Equipment', []),
-    ...extras.map((item) => [
-      { text: item.name, bold: true, alignment: 'center', margin: pad },
-      { text: item.details, margin: pad },
-      { text: item.rate, alignment: 'center', margin: pad },
-      { text: item.revenue, alignment: 'center', margin: pad },
-    ]),
-  ];
-  return table(widths, body, {
-    tableExtra: { heights: (i) => (i === 0 ? ROW : LINE), dontBreakRows: true },
-    nodeExtra: { margin: [0, 10, 0, 0] },
-  });
-}
-
-/**
- * The one figure the client is quoted: menu revenue plus every other
- * requirement, as offered. Sits directly under Other Requirements with its
- * amount in that table's Estimated Revenue column.
- */
-function totalRevenueSection(enquiry) {
-  const widths = cols([2832 + 3296 + 2602, 2556]);
-  return table(
-    widths,
-    [
-      [
-        { text: 'Total Estimated Revenue (exclusive of taxes)', bold: true, alignment: 'right', margin: [0, 3, 6, 3] },
-        { text: inr(eventTotal(enquiry)), bold: true, alignment: 'center', margin: [0, 3, 0, 3] },
-      ],
-    ],
-    { tableExtra: { heights: LINE, dontBreakRows: true } }
-  );
-}
-
-/** The configured sessions in the template's "Morning session – 8.00 am till 12 noon" style. */
-async function sessionTimingsSection() {
-  const sessions = await BanquetSession.find().sort({ order: 1, name: 1 }).lean();
-  const lines = sessions.length
-    ? sessions.map((s) => {
-        const start = s.startTime || '';
-        const end = s.endTime || '';
-        const times = start && end ? `${start} till ${end}` : start || end;
-        return `${s.name}${times ? ` – ${times}` : ''}`;
-      })
-    : [
-        'Morning session – 8.00 am till 12 noon sharp',
-        'Lunch session - 12 noon till 03.00 pm',
-        'Hi tea session - 3.00 pm till 6.00 pm sharp',
-        'Evening session - 7.00 pm till 12.00 am',
-      ];
-  return table(cols([11251]), [bar('Session timings'), [{ ul: lines, margin: [24, 2, 0, 2] }]], {
-    tableExtra: { heights: [ROW], dontBreakRows: true },
-    nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true },
-  });
-}
-
-/* ------------------------------ Page 3 sections ---------------------------- */
-
-const AV_EQUIPMENT = [
-  'LCD Projector With Screen @ Rs.3000/- plus taxes',
-  'Laptop @ Rs.1500/- plus taxes',
-  'Av System with podium @ Rs.3000/- plus taxes',
-  'Collar / Cordless Mike @ Rs.1000/- plus taxes',
-  'Dedicated internet LAN Rs.5500/- plus taxes',
-];
-
-const ENTERTAINMENT = [
-  'DJ System @ 12000+GST',
-  'DJ System with Dance Floor @ 15000+GST',
-  { text: 'Outsourced sound system will incur an additional plug-in charge of Rs.5000 + GST.', bold: true },
-];
-
-function avSection() {
-  return table(
-    cols([4746, 6506]),
-    [
-      bar('Audio-Visual Facilities', { span: 2 }),
-      [
-        { text: 'AV Equipment Available', bold: true, alignment: 'center', margin: [0, 28, 0, 0] },
-        { ul: AV_EQUIPMENT, margin: [24, 3, 0, 3] },
-      ],
-      bar('Rates and terms are valid till 7 days from the Proposal Date only', { span: 2, bold: false }),
-    ],
-    { tableExtra: { heights: [ROW], dontBreakRows: true }, nodeExtra: { unbreakable: true } }
-  );
-}
-
-function entertainmentSection() {
-  return table(
-    cols([5634, 5618]),
-    [
-      bar('Other Entertainment Facilities', { span: 2 }),
-      [
-        { text: 'Entertainment', bold: true, alignment: 'center', margin: [0, 14, 0, 0] },
-        { ul: ENTERTAINMENT, margin: [0, 3, 25, 3] },
-      ],
-    ],
-    { tableExtra: { heights: [ROW], dontBreakRows: true }, nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true } }
-  );
-}
-
-/** Two-column cancellation table shown under "a) Cancellation Terms". */
-function cancellationTable() {
-  const cell = (t, bold) => ({ text: t, bold, fontSize: 11 });
-  return {
-    table: {
-      widths: [160, 260],
-      body: [
-        [cell('Notice Period Before Event', true), cell('Cancellation Charges', true)],
-        [cell('0–30 days'), cell('100% of Estimated Event Value')],
-        [cell('31–45 days'), cell('75% of Estimated Event Value')],
-        [cell('46–120 days'), cell('50% of Estimated Event Value')],
-        [cell('121+ days'), cell('Forfeit of any deposit paid')],
-      ],
-    },
-    layout: {
-      ...GRID,
-      paddingTop: () => 2,
-      paddingBottom: () => 2,
-    },
-    margin: [24, 4, 0, 4],
-  };
-}
-
-function termsBookingSection() {
-  return table(
-    cols([1709, 9451]),
-    [
-      bar('Terms & Condition*', { span: 2 }),
-      [
-        side('Booking Confirmation', { margin: [1, 3, 0, 0] }),
-        {
-          stack: [
-            { text: 'A booking will be confirmed and guaranteed only after:', margin: [5, 1, 0, 0] },
-            {
-              ol: [
-                'Acceptance and acknowledgment of the Event Contract.',
-                'Payment of the minimum booking amount as per requirement.',
-                'Submission of valid PAN card and address proof for billing',
-              ],
-              type: 'lower-roman',
-              margin: [6, 3, 0, 2],
-            },
-          ],
-        },
-      ],
-      [
-        { text: '', fillColor: MAROON, rowSpan: 3 },
-        { text: 'a) Cancellation Terms', bold: true, margin: [23, 4, 0, 4] },
-      ],
-      [{}, cancellationTable()],
-      [
-        {},
-        {
-          text: 'Note: All cancellations must be submitted in writing, and are effective from the date of receipt by the hotel.',
-          bold: true,
-          margin: [5, 4, 20, 4],
-        },
-      ],
-    ],
-    { tableExtra: { dontBreakRows: true }, nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true } }
-  );
-}
-
-/* ------------------------------ Page 4 sections ---------------------------- */
-
-function smallTable(twips, header, rows, indent) {
-  const cell = (c, bold) =>
-    typeof c === 'string' ? { text: c, fontSize: 11, bold } : { fontSize: 11, bold, ...c };
-  // Scaled to the text column beside the maroon side labels.
-  const available = CONTENT_WIDTH - indent;
-  const total = twips.reduce((a, b) => a + b, 0);
-  const widths = twips.map((w) => (w / total) * available - CELL_EXTRA);
-  return {
-    table: {
-      widths,
-      body: [header.map((h) => cell(h, true)), ...rows.map((r) => r.map((c) => cell(c, false)))],
-    },
-    layout: { ...GRID, paddingTop: () => 2.5, paddingBottom: () => 2.5, paddingLeft: () => 5.5 },
-    margin: [indent, 4, 0, 10],
-  };
-}
-
-function attritionSections() {
-  return [
-    { text: 'b) Attrition & Increase Policy', bold: true, fontSize: 10, margin: [82, 0, 0, 4] },
-    { text: 'I. F&B & Event Space Attrition', bold: true, fontSize: 10, margin: [82, 0, 0, 0] },
-    smallTable(
-      [1484, 2311, 5216],
-      ['Timeline', 'Permitted Reduction', 'Charges / Conditions'],
-      [
-        ['> 48 hours before', 'Up to 10% of Minimum Guarantee', 'No surcharge; hotel may change the allotted hall/space'],
-        [
-          '<= 48 hours before',
-          'No reduction permitted',
-          'Increase beyond 20% of MG attracts 15% surcharge per extra guest. Menu flexibility not guaranteed.',
-        ],
-      ],
-      82
-    ),
-    { text: 'II. Room Block Attrition', bold: true, fontSize: 10, margin: [82, 4, 0, 0] },
-    smallTable(
-      [1568, 1647, 5687],
-      ['Timeline', 'Permitted Release', 'Charges / Conditions'],
-      [
-        [
-          '>= 7 days before check-in',
-          'Up to 20% of room block',
-          'No penalty for up to 20% reduction in room block. 100% retention for the entire booked stay if release rooms are beyond 20%.',
-        ],
-        [
-          '< 7 days before check-in',
-          'No Changes Permitted.',
-          { text: 'Will attract 100% retention for the entire booked stay for the released rooms', bold: true },
-        ],
-      ],
-      82
-    ),
-  ];
-}
-
-/** Roman-numbered headings each followed by their bullet points. */
-function romanList(sections, { boldItems = false } = {}) {
-  return {
-    ol: sections.map(({ heading, items }) => ({
-      stack: [
-        { text: heading, bold: true },
-        items?.length ? { ul: items.map((t) => ({ text: t, bold: boldItems })), margin: [18, 1, 0, 3] } : { text: '' },
-      ],
-    })),
-    type: 'upper-roman',
-    margin: [58, 3, 40, 3],
-  };
-}
-
-function commitmentSection() {
-  return table(
-    cols([1709, 9451]),
-    [
-      [
-        side('Event Commitment Terms', { margin: [1, 3, 0, 0] }),
-        romanList(
-          [
-            {
-              heading: 'No-Show Policy',
-              items: [
-                'Rooms: 100% retention will be charged for the entire booked stay.',
-                'F&B Events: No-shows will be included in the final bill as per the MG committed.',
-              ],
-            },
-            {
-              heading: 'Early Departure (Rooms Only)',
-              items: ["One full night's charge will apply for guests departing before their scheduled checkout"],
-            },
-            {
-              heading: 'Room Rate Extension',
-              items: ['Room rates for 3 days prior and 1 day after the event will remain the same as mentioned in the contract.'],
-            },
-            {
-              heading: 'Payment Terms for Attrition Charges:',
-              items: ['Any attrition charges must be paid within 3 days of receiving the invoice.'],
-            },
-          ],
-          { boldItems: true }
-        ),
-      ],
-    ],
-    { tableExtra: { dontBreakRows: true }, nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true } }
-  );
-}
-
-/* ------------------------------ Page 5 sections ---------------------------- */
-
-function policiesSection() {
-  const bullets = (items, margin = [58, 2, 30, 2]) => ({ ul: items, margin });
-  return table(
-    cols([1709, 9451]),
-    [
-      [
-        side('Children Policy', { margin: [1, 3, 0, 0] }),
-        {
-          ol: [
-            {
-              stack: [
-                { text: 'Room Stay Policy', bold: true },
-                {
-                  ul: [
-                    "Children up to 12 years stay free in parents' room (existing bedding).",
-                    'Children above 12 years are charged as adults.',
-                  ].map((t) => ({ text: t, bold: true })),
-                  margin: [54, 1, 0, 2],
-                },
-              ],
-            },
-            {
-              stack: [
-                { text: 'Restaurant Buffet Meals', bold: true },
-                {
-                  ul: [
-                    'Children 0 to 8 years: Complimentary buffet meals.',
-                    'Children 8 to 12 years: Charged at 50% of the adult buffet rate.',
-                    'Children 13 years and above: Charged at full adult buffet rate.',
-                  ].map((t) => ({ text: t, bold: true })),
-                  margin: [18, 1, 0, 2],
-                },
-              ],
-            },
-          ],
-          margin: [22, 2, 0, 2],
-        },
-      ],
-      [
-        side('Pre-Event Coordination', { margin: [1, 3, 0, 0] }),
-        {
-          stack: [
-            { text: 'To be shared 7 working days prior:', bold: true, margin: [5, 1, 0, 0] },
-            bullets(['Final guest numbers', 'Menu details', 'Seating plan', 'Event Programme', 'Rooming list', 'Any special requirements']),
-          ],
-        },
-      ],
-      [
-        side('Venue Usage & Other Conditions', { margin: [1, 3, 8, 0] }),
-        bullets([
-          'Music, DJ, and live performances are permitted, provided the volume is maintained within acceptable limits and does not cause disturbance to other hotel guests or the neighborhood. The hotel encourages a lively yet respectful celebration atmosphere and reserves the right to intervene in case of noise complaints.',
-          'Fireworks, drums, dhol, or horse entries are strictly prohibited.',
-          'Smoking is allowed only in designated areas.',
-          'Nothing may be affixed to venue walls.',
-          'Organizers must vacate venue by the specified time as mentioned in the booking agreement.',
-          'Outside food or beverages are not allowed within the hotel premises.',
-          'Materials used must be cleared within 2 hours post-event.',
-          'Visitors are not allowed in guest rooms after 10:00 PM.',
-        ]),
-      ],
-    ],
-    { tableExtra: { dontBreakRows: true } }
-  );
-}
-
-function refusalSection() {
-  return table(
-    cols([1709, 9451]),
-    [
-      [
-        side('', {}),
-        {
-          ul: [
-            {
-              stack: [
-                { text: 'The hotel reserves the right to refuse or cancel a booking if:' },
-                {
-                  ul: [
-                    'The purpose of use is found to be different from what was declared.',
-                    'The event is likely to cause disturbance, violence, or damage to property or guests.',
-                    'The MG count significantly changes, which may result in space reallocation.',
-                  ],
-                  type: 'circle',
-                  margin: [18, 1, 30, 2],
-                },
-              ],
-            },
-          ],
-          margin: [58, 2, 0, 2],
-        },
-      ],
-    ],
-    { tableExtra: { dontBreakRows: true }, nodeExtra: { margin: [0, 10, 0, 0], unbreakable: true } }
-  );
-}
-
-/* ------------------------------ Page 6 sections ---------------------------- */
-
-function vendorSection() {
-  const bullets = (items, margin = [58, 2, 40, 2]) => ({ ul: items, margin });
-  return table(
-    cols([1709, 9451]),
-    [
-      [
-        side('Vendor Guidelines & Policy', { margin: [1, 3, 8, 0] }),
-        {
-          stack: [
-            bullets([
-              'Only vendors pre-approved by hotel or regularly working at the venue are recommended.',
-              'Decorators must submit detailed decoration plan and coordinate with banquet operations.',
-              'Vendors must maintain hygienic working conditions.',
-              'INR 10,000/- security deposit to be paid, refundable post-event.',
-              'All vendor items must pass security check at the basement security desk.',
-              'Stairways, exits, emergency access points, and CCTV cameras must not be blocked.',
-              'Vendors must follow all hotel guidelines as explained to them by the security team.',
-            ]),
-            {
-              text: 'To avoid last-minute issues, vendors are encouraged to visit the hotel a day prior to the event to understand and clarify all procedural requirements.',
-              margin: [41, 2, 40, 2],
-            },
-          ],
-        },
-      ],
-      [
-        side('Insurance, Liability & Safety', { margin: [1, 3, 8, 0] }),
-        bullets([
-          'The hotel shall not be held responsible for any loss, theft, or damage to personal belongings or vendor equipment during the event.',
-          'The organizer shall be solely responsible for ensuring compliance with all legal requirements, including but not limited to permissions related to performance licensing, royalty payments, excise permissions, and police permissions, as applicable to the event.',
-          'Organizers are encouraged to arrange insurance coverage for valuables, equipment, and décor.',
-          'Any injury or incident caused due to negligence by the organizer or vendor will be the responsibility of the organizer.',
-        ]),
-      ],
-      [
-        side('Fire Safety & Compliance', { margin: [1, 3, 0, 0] }),
-        bullets([
-          "All electrical, AV, or lighting equipment brought by vendors must be pre-approved and comply with the hotel's fire safety norms.",
-          'Use of open flames, smoke machines, or pyrotechnics is strictly prohibited unless expressly approved in writing by hotel management.',
-        ]),
-      ],
-      [
-        side('Force Majeure & Hotel Rights', { margin: [1, 3, 0, 0] }),
-        {
-          ul: [
-            'The hotel is not liable for non-performance due to war, strikes, riots, or acts of God.',
-            "In case of force majeure (natural disasters, restrictions, etc.), cancellation and attrition penalties may be waived at management's discretion.",
-            {
-              stack: [
-                { text: 'Hotel reserves the right to reject any booking which may:' },
-                { ul: ['Breach peace or legal norms', 'Lead to property damage or security threats'], type: 'circle', margin: [18, 1, 0, 0] },
-              ],
-            },
-          ],
-          margin: [26, 2, 36, 2],
-        },
-      ],
-    ],
-    { tableExtra: { dontBreakRows: true } }
-  );
-}
-
-/* ------------------------------ Page 7 sections ---------------------------- */
-
-function bankSection() {
-  const row = (k, v) => [{ text: k, margin: [2, 0, 0, 0] }, { text: v, margin: [2, 0, 0, 0] }];
-  return table(
-    cols([4878, 6462]),
-    [
-      bar('Bank Details', { span: 2 }),
-      row('Bank Name', 'HDFC BANK LTD'),
-      row('Account name', 'HOTEL AMARJIT PVT. LTD.'),
-      row('Account number', '50200013055259'),
-      row('Account Type', 'CURRENT ACCOUNT'),
-      row('Bank Branch Address', '9, HINDUSTAN COLONY, NEAR SAI MANDIR, CHAWLA PALACE,\nWARDHA ROAD, NAGPUR- 440015'),
-    ],
-    { tableExtra: { heights: ROW, dontBreakRows: true }, nodeExtra: { margin: [0, 6, 0, 0] } }
-  );
-}
-
-function contactSection(preparedBy) {
-  const c = (t) => ({ text: t, margin: [2, 0, 0, 0] });
-  return table(
-    cols([1966, 2326, 2326, 2324, 2393]),
-    [
-      bar('Point of Contact', { span: 5 }),
-      [c('Department'), c('Name'), c('Designation'), c('Mobile'), c('Email')],
-      [
-        { text: 'Sales', fontSize: 10.5 },
-        { text: preparedBy?.name || '', fontSize: 10.5 },
-        { text: preparedBy?.designation || '', fontSize: 10.5 },
-        { text: preparedBy?.mobile || '', fontSize: 10.5 },
-        { text: preparedBy?.email || '', fontSize: 10.5 },
-      ],
-    ],
-    { tableExtra: { heights: ROW, dontBreakRows: true }, nodeExtra: { margin: [0, 10, 0, 0] } }
-  );
-}
-
-/* ------------------------------ Document body ------------------------------ */
-
-async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature }) {
-  const content = [
-    guestSection(enquiry, lead, kind),
-    roomRequirementSection(enquiry),
-    otherRoomCategorySection(),
-    inclusionsSection(),
-
-    // The template breaks here; the sections after flow with the event size,
-    // each block kept whole rather than split across pages.
-    { ...eventMealSection(enquiry), pageBreak: 'before' },
-    otherRequirementsSection(enquiry),
-    totalRevenueSection(enquiry),
-    await sessionTimingsSection(),
-
-    { ...avSection(), margin: [0, 12, 0, 0] },
-    entertainmentSection(),
-    termsBookingSection(),
-
-    { stack: attritionSections(), unbreakable: true, margin: [0, 12, 0, 0] },
-    commitmentSection(),
-
-    { ...policiesSection(), margin: [0, 12, 0, 0] },
-    refusalSection(),
-
-    { ...vendorSection(), margin: [0, 12, 0, 0] },
-
-    { stack: [bankSection(), contactSection(preparedBy)], unbreakable: true, margin: [0, 12, 0, 0] },
-  ];
-
-  if (clientSignature) content.push(acceptanceSection(clientSignature));
-  return content;
-}
-
 /** Digital acceptance block stamped on the signed copy. */
 function acceptanceSection(signature) {
   const when = new Date(signature.signedAt).toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
@@ -1090,46 +326,12 @@ function acceptanceSection(signature) {
   };
 }
 
-function documentMeta(enquiry, kind) {
-  const doc = kind === 'contract' ? enquiry.contract : enquiry.proposal;
-  return { number: doc?.number || '', footerDate: longDate(doc?.generatedAt) };
-}
-
 /**
- * The banquet proposal (HCP.EP…).
- * @param {object} enquiry populated enquiry (functions, venues, sessions, options)
- * @param {object} lead
- * @param {{preparedBy?: {name: string, designation?: string, mobile?: string, email?: string}}} [options]
- */
-export async function buildEnquiryProposalPdf(enquiry, lead, options = {}) {
-  const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
-  const content = await documentContent(enquiry, lead, { kind: 'proposal', preparedBy });
-  return {
-    buffer: await renderToBuffer(docDefinition(content, documentMeta(enquiry, 'proposal'))),
-    filename: `Proposal ${safeName(enquiry.proposal?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
-    contentType: 'application/pdf',
-  };
-}
-
-/** The contract (HCP.EC…): the proposal's terms under a contract number and date of confirmation. */
-export async function buildContractPdf(enquiry, lead, options = {}) {
-  const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
-  const content = await documentContent(enquiry, lead, { kind: 'contract', preparedBy });
-  return {
-    buffer: await renderToBuffer(docDefinition(content, documentMeta(enquiry, 'contract'))),
-    filename: `Contract ${safeName(enquiry.contract?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
-    contentType: 'application/pdf',
-  };
-}
-
-/**
- * The signed copy — the same document with the client's digital acceptance
- * stamped at the end.
- * @param {'proposal'|'contract'|'addendum'} [options.kind]
- * @param {object} [options.addendum] the addendum record, when kind is 'addendum'
+ * The signed addendum: its print with the client's digital acceptance
+ * stamped at the end. (Signed proposals and contracts print from
+ * proposalPdf.service.js, which hands the addendum kind here.)
  */
 export async function buildSignedDocumentPdf(enquiry, lead, signature, options = {}) {
-  const kind = ['proposal', 'addendum'].includes(options.kind) ? options.kind : 'contract';
   const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
   const drawn = signature.signatureType === 'drawn' && signature.signatureDataUrl;
   const clientSignature = {
@@ -1141,19 +343,10 @@ export async function buildSignedDocumentPdf(enquiry, lead, signature, options =
     typedName: signature.signatureType === 'typed' ? signature.signerName : '',
   };
   const images = drawn ? { signatureImg: signature.signatureDataUrl } : {};
-  if (kind === 'addendum') {
-    const content = addendumContent(enquiry, lead, options.addendum, { preparedBy, clientSignature });
-    return {
-      buffer: await renderToBuffer(docDefinition(content, { ...addendumMeta(options.addendum), images })),
-      filename: `Signed Addendum ${safeName(options.addendum?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
-      contentType: 'application/pdf',
-    };
-  }
-  const content = await documentContent(enquiry, lead, { kind, preparedBy, clientSignature });
-  const label = kind === 'contract' ? 'Signed Contract' : 'Signed Proposal';
+  const content = addendumContent(enquiry, lead, options.addendum, { preparedBy, clientSignature });
   return {
-    buffer: await renderToBuffer(docDefinition(content, { ...documentMeta(enquiry, kind), images })),
-    filename: `${label} - ${safeName(lead?.businessName, 'Guest')}.pdf`,
+    buffer: await renderToBuffer(docDefinition(content, { ...addendumMeta(options.addendum), images })),
+    filename: `Signed Addendum ${safeName(options.addendum?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
     contentType: 'application/pdf',
   };
 }
@@ -1704,8 +897,6 @@ export async function buildCreditFormPdf(enquiry, lead) {
 }
 
 export default {
-  buildEnquiryProposalPdf,
-  buildContractPdf,
   buildSignedDocumentPdf,
   buildProformaPdf,
   buildAddendumPdf,
