@@ -4,6 +4,13 @@ const { Schema, model } = mongoose;
 
 export const LEAD_STATUSES = ['Non Contracted', 'Contracted'];
 
+/**
+ * A lead is either a company or an individual. Companies are structured as a
+ * tree — Company → Branch → Department — and every enquiry / rate contract
+ * hangs off one department node. Individuals have no structure.
+ */
+export const LEAD_TYPES = ['company', 'individual'];
+
 export const CONTACTED_FOR_OPTIONS = ['CPA', 'CPH', 'CPNM'];
 
 export const VISIT_ACTION_OPTIONS = [
@@ -83,6 +90,23 @@ const instructionSchema = new Schema(
   { _id: true }
 );
 
+/**
+ * One node of a company's structure: a department, optionally under a
+ * branch. `branch` is free text and may be empty when the company has no
+ * branches; `name` is the department. Enquiries and ARCs reference the node
+ * by its _id.
+ */
+const departmentSchema = new Schema(
+  {
+    branch: { type: String, default: '', trim: true },
+    name: { type: String, required: true, trim: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    createdByName: { type: String },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const historySchema = new Schema(
   {
     type: { type: String },
@@ -97,7 +121,11 @@ const historySchema = new Schema(
 const leadSchema = new Schema(
   {
     reference: { type: String, unique: true, index: true },
+    leadType: { type: String, enum: LEAD_TYPES, default: 'company', index: true },
+    // Company name, or the person's full name for individual leads.
     businessName: { type: String, required: true },
+    // Company structure (empty for individuals).
+    departments: { type: [departmentSchema], default: [] },
     contactPerson: { type: String },
     designation: { type: String },
     mobile: { type: String },

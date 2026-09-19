@@ -4,94 +4,121 @@
 
 /*
  * Centre Point Hospitality — Leads CRM theme.
- * Palette: teal/charcoal with a warm amber accent.
- * All colors are stored as raw HSL channels so Tailwind can wrap them
- * in hsl(var(--token)) with optional opacity modifiers.
+ *
+ * Palette: deep teal brand, warm amber accent, calm slate neutrals. Every
+ * color is a raw HSL triple so Tailwind can wrap it in hsl(var(--token))
+ * with opacity modifiers. Semantic status tokens (success / warning / info /
+ * destructive) are the only colors components should use for meaning.
  */
 @layer base {
   :root {
-    --background: 180 22% 99%;
-    --foreground: 200 18% 14%;
+    --background: 200 20% 97%;
+    --foreground: 200 24% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 200 18% 14%;
+    --card-foreground: 200 24% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 200 18% 14%;
+    --popover-foreground: 200 24% 12%;
 
-    --primary: 175 70% 30%;
+    --primary: 174 65% 26%;
     --primary-foreground: 170 60% 97%;
 
     --secondary: 180 18% 94%;
     --secondary-foreground: 200 20% 20%;
 
     --muted: 185 16% 95%;
-    --muted-foreground: 200 10% 42%;
+    --muted-foreground: 205 12% 42%;
 
-    --accent: 35 92% 52%;
+    --accent: 35 92% 50%;
     --accent-foreground: 30 50% 12%;
 
-    --destructive: 0 72% 48%;
+    --destructive: 0 72% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 190 16% 88%;
-    --input: 190 16% 86%;
-    --ring: 175 70% 34%;
+    --success: 142 62% 34%;
+    --success-foreground: 0 0% 100%;
+    --warning: 35 92% 44%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 85% 50%;
+    --info-foreground: 0 0% 100%;
 
-    --radius: 0.6rem;
+    --border: 200 16% 88%;
+    --input: 200 16% 80%;
+    --ring: 174 64% 32%;
+
+    /* App shell surfaces. */
+    --sidebar: 180 18% 99%;
+    --sidebar-foreground: 200 18% 22%;
+    --sidebar-border: 190 16% 90%;
+    --topbar: 0 0% 100%;
+
+    --radius: 0.75rem;
 
     /* Status colors — used by StatusBadge and section accents. */
-    --status-contracted: 142 64% 38%;
+    --status-contracted: 142 62% 36%;
     --status-non-contracted: 215 16% 47%;
     --status-new: 215 16% 47%;
     --status-contacted: 217 91% 55%;
     --status-qualified: 244 70% 58%;
-    --status-proposal: 35 92% 50%;
+    --status-proposal: 35 92% 48%;
     --status-negotiation: 271 70% 55%;
-    --status-won: 142 64% 38%;
-    --status-lost: 0 72% 50%;
+    --status-won: 142 62% 36%;
+    --status-lost: 0 72% 48%;
 
     /* Chart palette. */
-    --chart-1: 175 70% 34%;
-    --chart-2: 35 92% 52%;
+    --chart-1: 174 64% 32%;
+    --chart-2: 35 92% 50%;
     --chart-3: 217 80% 56%;
     --chart-4: 271 60% 56%;
-    --chart-5: 142 55% 42%;
+    --chart-5: 142 55% 40%;
     --chart-6: 200 18% 40%;
   }
 
   .dark {
-    --background: 200 24% 9%;
+    --background: 202 26% 8%;
     --foreground: 180 18% 92%;
 
-    --card: 200 22% 12%;
+    --card: 202 22% 11%;
     --card-foreground: 180 18% 92%;
 
-    --popover: 200 24% 11%;
+    --popover: 202 24% 10%;
     --popover-foreground: 180 18% 92%;
 
-    --primary: 173 62% 46%;
+    --primary: 173 60% 46%;
     --primary-foreground: 200 30% 8%;
 
-    --secondary: 200 16% 18%;
+    --secondary: 200 16% 17%;
     --secondary-foreground: 180 16% 90%;
 
-    --muted: 200 16% 17%;
-    --muted-foreground: 195 12% 64%;
+    --muted: 200 16% 15%;
+    --muted-foreground: 195 12% 66%;
 
     --accent: 35 90% 56%;
     --accent-foreground: 30 50% 10%;
 
-    --destructive: 0 64% 52%;
+    --destructive: 0 64% 56%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 200 14% 22%;
+    --success: 142 52% 52%;
+    --success-foreground: 200 30% 8%;
+    --warning: 35 90% 58%;
+    --warning-foreground: 30 50% 10%;
+    --info: 217 85% 66%;
+    --info-foreground: 200 30% 8%;
+
+    --border: 200 14% 20%;
     --input: 200 14% 24%;
-    --ring: 173 62% 50%;
+    --ring: 173 60% 50%;
+
+    --sidebar: 202 24% 10%;
+    --sidebar-foreground: 180 14% 82%;
+    --sidebar-border: 200 14% 18%;
+    --topbar: 202 24% 10%;
 
     --status-contracted: 142 56% 52%;
-    --status-non-contracted: 215 14% 60%;
-    --status-new: 215 14% 60%;
+    --status-non-contracted: 215 14% 62%;
+    --status-new: 215 14% 62%;
     --status-contacted: 217 85% 64%;
     --status-qualified: 244 70% 70%;
     --status-proposal: 35 90% 58%;
@@ -99,7 +126,7 @@
     --status-won: 142 56% 52%;
     --status-lost: 0 70% 62%;
 
-    --chart-1: 173 62% 50%;
+    --chart-1: 173 60% 50%;
     --chart-2: 35 90% 58%;
     --chart-3: 217 80% 66%;
     --chart-4: 271 64% 70%;
@@ -115,14 +142,18 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 5.5rem;
   }
 
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-feature-settings: 'rlig' 1, 'calt' 1, 'cv11' 1, 'ss01' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Reduce the 300ms tap delay and stop double-tap zoom on controls. */
+    touch-action: manipulation;
+    line-height: 1.5;
   }
 
   /* Balanced multi-line headings. */
@@ -132,9 +163,33 @@
     text-wrap: balance;
   }
 
+  /* Data reads better with tabular figures everywhere. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A visually hidden page heading must not create vertical rhythm: the
+     element after it keeps its own top spacing at zero. */
+  h1.sr-only + * {
+    margin-top: 0 !important;
+  }
+
   /* Brand-tinted text selection. */
   ::selection {
     background-color: hsl(var(--primary) / 0.2);
+  }
+
+  /* Native date/time pickers pick up the theme. */
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    color-scheme: light;
+  }
+  .dark input[type='date'],
+  .dark input[type='time'],
+  .dark input[type='datetime-local'] {
+    color-scheme: dark;
   }
 
   /* Respect users who prefer reduced motion. */
@@ -173,5 +228,84 @@
 
   *::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+@layer components {
+  .page-header-hidden + * {
+    margin-top: 0 !important;
+  }
+  .record-toolbar {
+    @apply sticky top-14 z-20 bg-background/95 py-2 backdrop-blur;
+  }
+  /* The same field states across account, booking and document forms. */
+  .form-control[aria-invalid='true'] {
+    @apply border-destructive bg-destructive/5 focus-visible:ring-destructive/20;
+  }
+  .form-control:disabled,
+  fieldset:disabled .form-control {
+    @apply cursor-not-allowed bg-muted/60 text-muted-foreground opacity-100 shadow-none;
+  }
+
+  .form-action-bar {
+    @apply sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/95 px-5 py-4 shadow-elevated backdrop-blur;
+  }
+
+  .workspace-toolbar {
+    @apply flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-card;
+  }
+
+  .kanban-board[data-compact='true'] {
+    @apply gap-2;
+  }
+  .kanban-board[data-compact='true'] .kanban-card {
+    @apply p-2;
+  }
+  .kanban-board[data-compact='true'] .kanban-card .text-sm {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .kanban-board[data-compact='true'] header {
+    @apply px-2;
+  }
+  .kanban-board[data-compact='true'] header > span:first-child {
+    @apply gap-1.5 text-xs;
+  }
+  .kanban-card > .justify-between {
+    @apply flex-wrap;
+  }
+  .kanban-card > .justify-between > span {
+    @apply min-w-0 break-words;
+  }
+
+  /* Small uppercase label used above groups of fields / section eyebrows. */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  /* Keyboard hint chip (e.g. ⌘K). */
+  .kbd {
+    @apply inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground;
+  }
+
+  /* Interactive surface: cards that act as buttons / links. */
+  .surface-interactive {
+    @apply cursor-pointer transition-[border-color,box-shadow,background-color,transform] duration-150 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.995];
+  }
+  .surface-interactive:hover {
+    box-shadow: 0 2px 4px hsl(200 18% 14% / 0.05), 0 8px 20px -8px hsl(200 18% 14% / 0.14);
+  }
+
+  /* Horizontal scroller with snap points (kanban boards, chip rows). */
+  .scroll-x {
+    @apply flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-3 [scrollbar-gutter:stable];
+  }
+  .scroll-x > * {
+    @apply snap-start;
+  }
+
+  /* Skip link for keyboard users. */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-elevated;
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -22,16 +22,27 @@ import {
   MapPin,
   Building2,
   Save,
-  Package,
   FileText,
   NotebookPen,
+  User,
+  Network,
+  CalendarDays,
+  FileSignature,
+  ChevronUp,
+  ChevronRight,
+  ArrowUpRight,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate, formatDateTime, formatRelative } from '@/lib/format';
+import { isIndividual, departmentLabel } from '@/lib/departments';
 
 import { PageHeader } from '@/components/PageHeader';
+import { EnquiriesSection } from '@/components/enquiries/EnquiriesSection';
+import { ArcsSection } from '@/components/arcs/ArcsSection';
+import { DepartmentsSection } from '@/components/leads/DepartmentsSection';
 import { StatusBadge, LEAD_STATUSES } from '@/components/StatusBadge';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -188,6 +199,7 @@ export default function LeadDetailPage() {
     return (
       <div className="space-y-6">
         <PageHeader
+          showTitle
           title="Lead"
           actions={
             <Button variant="outline" asChild>
@@ -221,58 +233,328 @@ export default function LeadDetailPage() {
         reload={() => load({ silent: true })}
       />
 
-      {/* Everything on one page — overview first, then the activity sections. */}
-      <OverviewTab lead={lead} />
+      {/* Pipeline sections in the main column; the record of activity
+          (visits, follow-ups, action points, instructions, notes) lives in
+          the At-a-glance panel and opens in a dialog. */}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-5">
+          {/* A company opens on its structure - the Branch to Department tree
+              that every enquiry and rate contract hangs off. */}
+          {!isIndividual(lead) ? <DepartmentsSection lead={lead} mutate={mutate} /> : null}
 
-      <KitsSection lead={lead} />
+          <OverviewTab lead={lead} />
 
-      <SectionCard
-        icon={NotebookPen}
-        title="Visit Report"
-        count={(lead.visitReports || []).length}
-      >
-        <VisitReportsTab lead={lead} mutate={mutate} />
-      </SectionCard>
+          <EnquiriesSection lead={lead} onLeadUpdated={(next) => next && setLead(next)} />
 
-      <SectionCard
-        icon={ListChecks}
-        title="Action Points"
-        count={(lead.actionPoints || []).filter((a) => !a.cleared).length}
-      >
-        <ActionPointsTab lead={lead} mutate={mutate} />
-      </SectionCard>
+          {!isIndividual(lead) ? (
+            <ArcsSection lead={lead} onLeadUpdated={(next) => next && setLead(next)} />
+          ) : null}
+        </div>
 
-      <SectionCard
-        icon={CalendarClock}
-        title="Follow-ups"
-        count={(lead.followUps || []).filter((f) => f.status === 'open').length}
-      >
-        <FollowUpsTab lead={lead} mutate={mutate} />
-      </SectionCard>
+        <aside>
+          <div className="xl:sticky xl:top-20">
+            <AtAGlance
+              lead={lead}
+              mutate={mutate}
+              isAdmin={isAdmin}
+              isAssignedExec={isAssignedExec}
+              myId={myId}
+            />
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
 
-      {isAdmin || (lead.instructions || []).length > 0 ? (
-        <SectionCard
-          icon={Megaphone}
-          title="Instructions"
-          count={(lead.instructions || []).filter((i) => i.status === 'open').length}
-        >
+/* -------------------------------------------------------------------------- */
+/* Section navigation + at-a-glance rail                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Each record panel that opens from the At-a-glance list. */
+const RECORD_PANELS = {
+  'follow-ups': {
+    title: 'Follow-ups',
+    icon: CalendarClock,
+    description:
+      'Everything scheduled for this lead. Close a follow-up with a note once it is done.',
+  },
+  visits: {
+    title: 'Visit Reports',
+    icon: NotebookPen,
+    description: 'What happened on each visit, and the action agreed afterwards.',
+  },
+  'action-points': {
+    title: 'Action Points',
+    icon: ListChecks,
+    description: 'Concrete to-dos for this lead. Clear them as they are done.',
+  },
+  instructions: {
+    title: 'Instructions',
+    icon: Megaphone,
+    description: 'Directives from an admin to the executive who owns this lead.',
+  },
+  notes: {
+    title: 'Internal Notes',
+    icon: StickyNote,
+    description: 'Internal only, never shared with the client.',
+  },
+};
+
+/**
+ * Right-rail summary: who to call, what is due, and the whole activity record
+ * (visits, follow-ups, action points, instructions, notes) as one-line rows.
+ * Each row opens its full section in a dialog, so the page itself stays short.
+ */
+function AtAGlance({ lead, mutate, isAdmin, isAssignedExec, myId }) {
+  const [panel, setPanel] = useState(null);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const openFollowUps = (lead.followUps || [])
+    .filter((f) => f.status === 'open')
+    .sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+  const next = openFollowUps.find((f) => f.dueDate);
+  const nextDue = next ? new Date(next.dueDate) : null;
+  const overdue = nextDue && nextDue < today;
+  const dueToday = nextDue && !overdue && nextDue - today < 24 * 60 * 60 * 1000;
+
+  const visits = [...(lead.visitReports || [])].sort(
+    (a, b) => new Date(b.visitDate || 0) - new Date(a.visitDate || 0)
+  );
+  const lastVisit = visits[0];
+  const actionPoints = lead.actionPoints || [];
+  const openActions = actionPoints.filter((a) => !a.cleared).length;
+  const instructions = lead.instructions || [];
+  const openInstructions = instructions.filter((i) => i.status === 'open').length;
+  const notes = [...(lead.notes || [])].sort(
+    (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  );
+
+  const rows = [
+    {
+      key: 'follow-ups',
+      label: 'Follow-ups',
+      icon: CalendarClock,
+      count: openFollowUps.length,
+      tone: overdue ? 'destructive' : dueToday ? 'warning' : 'default',
+      meta: next
+        ? `Next ${formatDate(next.dueDate)}${overdue ? ' - overdue' : dueToday ? ' - today' : ''}`
+        : openFollowUps.length
+          ? `${openFollowUps.length} open, no date set`
+          : 'Nothing scheduled',
+    },
+    {
+      key: 'visits',
+      label: 'Visit reports',
+      icon: NotebookPen,
+      count: visits.length,
+      meta: lastVisit ? `Last visit ${formatDate(lastVisit.visitDate)}` : 'No visits recorded',
+    },
+    {
+      key: 'action-points',
+      label: 'Action points',
+      icon: ListChecks,
+      count: openActions,
+      tone: openActions ? 'warning' : 'default',
+      meta: actionPoints.length
+        ? `${actionPoints.length - openActions} of ${actionPoints.length} cleared`
+        : 'None added',
+    },
+    isAdmin || instructions.length
+      ? {
+          key: 'instructions',
+          label: 'Instructions',
+          icon: Megaphone,
+          count: openInstructions,
+          tone: openInstructions ? 'info' : 'default',
+          meta: instructions.length ? `${instructions.length} issued in total` : 'None issued',
+        }
+      : null,
+    {
+      key: 'notes',
+      label: 'Internal notes',
+      icon: StickyNote,
+      count: notes.length,
+      meta: notes[0] ? `Last note ${formatRelative(notes[0].createdAt)}` : 'No notes yet',
+    },
+  ].filter(Boolean);
+
+  const toneClass = {
+    destructive: 'text-destructive bg-destructive/10',
+    warning: 'text-warning bg-warning/10',
+    info: 'text-info bg-info/10',
+    default: 'text-muted-foreground bg-muted',
+  };
+
+  const cfg = panel ? RECORD_PANELS[panel] : null;
+  const PanelIcon = cfg?.icon;
+
+  function panelBody() {
+    switch (panel) {
+      case 'visits':
+        return <VisitReportsTab lead={lead} mutate={mutate} />;
+      case 'action-points':
+        return <ActionPointsTab lead={lead} mutate={mutate} />;
+      case 'follow-ups':
+        return <FollowUpsTab lead={lead} mutate={mutate} />;
+      case 'instructions':
+        return (
           <InstructionsTab
             lead={lead}
             isAdmin={isAdmin}
             isAssignedExec={isAssignedExec}
             mutate={mutate}
           />
-        </SectionCard>
-      ) : null}
+        );
+      case 'notes':
+        return <NotesTab lead={lead} myId={myId} isAdmin={isAdmin} mutate={mutate} />;
+      default:
+        return null;
+    }
+  }
 
-      <SectionCard
-        icon={StickyNote}
-        title="Internal Notes"
-        count={lead.notes?.length}
-      >
-        <NotesTab lead={lead} myId={myId} isAdmin={isAdmin} mutate={mutate} />
-      </SectionCard>
-    </div>
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">At a glance</CardTitle>
+          <CardDescription>Open any record to read it or add to it.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {/* Next follow-up gets the loudest treatment - it is the next move. */}
+          <div
+            className={cn(
+              'rounded-lg border p-3',
+              overdue
+                ? 'border-destructive/40 bg-destructive/10'
+                : dueToday
+                  ? 'border-warning/40 bg-warning/10'
+                  : 'bg-muted/40'
+            )}
+          >
+            <p className="eyebrow">Next follow-up</p>
+            {next ? (
+              <>
+                <p
+                  className={cn(
+                    'mt-1 font-semibold tabular-nums',
+                    overdue ? 'text-destructive' : dueToday ? 'text-warning' : 'text-foreground'
+                  )}
+                >
+                  {formatDate(next.dueDate)}
+                  {overdue ? ' - Overdue' : dueToday ? ' - Today' : ''}
+                </p>
+                {next.note ? (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{next.note}</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-1 text-muted-foreground">Nothing scheduled</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setPanel('follow-ups')}
+              className="mt-2 inline-flex min-h-6 items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {next ? 'Open follow-ups' : 'Schedule one'}
+              <ArrowUpRight className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* The full activity record - one row each, opens in a dialog. */}
+          <ul className="-mx-1 space-y-0.5">
+            {rows.map((row) => {
+              const Icon = row.icon;
+              return (
+                <li key={row.key}>
+                  <button
+                    type="button"
+                    onClick={() => setPanel(row.key)}
+                    className="flex min-h-[3rem] w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                        toneClass[row.tone || 'default']
+                      )}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-medium text-foreground">{row.label}</span>
+                        {row.count ? (
+                          <span className="rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold tabular-nums text-primary">
+                            {row.count}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">{row.meta}</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="space-y-2 border-t pt-3">
+            {lead.mobile ? (
+              <a
+                href={`tel:${lead.mobile}`}
+                className="flex items-center gap-2 text-foreground hover:text-primary"
+              >
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                <span className="tabular-nums">{lead.mobile}</span>
+              </a>
+            ) : null}
+            {lead.email ? (
+              <a
+                href={`mailto:${lead.email}`}
+                className="flex items-center gap-2 truncate text-foreground hover:text-primary"
+              >
+                <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{lead.email}</span>
+              </a>
+            ) : null}
+            {lead.city ? (
+              <p className="flex items-center gap-2 text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                {lead.city}
+              </p>
+            ) : null}
+            {!lead.mobile && !lead.email ? (
+              <p className="text-xs text-muted-foreground">No contact details yet.</p>
+            ) : null}
+          </div>
+
+          <div className="border-t pt-3 text-xs text-muted-foreground">
+            <p>
+              Assigned to{' '}
+              <span className="font-medium text-foreground">
+                {refName(lead.assignedTo, 'Unassigned')}
+              </span>
+            </p>
+            <p className="mt-0.5">Updated {formatRelative(lead.updatedAt)}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={Boolean(panel)} onOpenChange={(open) => !open && setPanel(null)}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {PanelIcon ? <PanelIcon className="h-4 w-4 text-primary" aria-hidden="true" /> : null}
+              {cfg?.title}
+            </DialogTitle>
+            <DialogDescription>{cfg?.description}</DialogDescription>
+          </DialogHeader>
+          {panelBody()}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -289,33 +571,45 @@ function Count({ value }) {
   );
 }
 
-/** A titled card wrapping one detail section (notes, follow-ups, …). */
-function SectionCard({ icon: Icon, title, count, children }) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          {Icon ? <Icon className="h-4 w-4 text-muted-foreground" /> : null}
-          <span>{title}</span>
-          <Count value={count} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
+/**
+ * Inline "add" form for a section. Collapsed to a single button by default
+ * so the page reads as a record, not a wall of empty forms; opens on demand
+ * and folds away again once a submit finishes.
+ */
+function SectionAdd({ onSubmit, children, submitLabel = 'Add', disabled, openLabel }) {
+  const [open, setOpen] = useState(false);
+  const wasBusy = useRef(false);
 
-function SectionAdd({ onSubmit, children, submitLabel = 'Add', disabled }) {
+  useEffect(() => {
+    if (wasBusy.current && !disabled) setOpen(false);
+    wasBusy.current = Boolean(disabled);
+  }, [disabled]);
+
+  if (!open) {
+    return (
+      <div className="mb-4">
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" />
+          {openLabel || submitLabel}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(e);
       }}
-      className="space-y-3 rounded-lg border bg-muted/30 p-4"
+      className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4 animate-slide-in"
     >
       {children}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={disabled}>
+          <ChevronUp className="h-4 w-4" />
+          Close
+        </Button>
         <Button type="submit" size="sm" disabled={disabled}>
           {disabled ? (
             <Spinner size="sm" className="text-current" />
@@ -391,10 +685,19 @@ function DetailHeader({ lead, isAdmin, canDelete, navigate, mutate, reload }) {
         </div>
 
         <PageHeader
+          showTitle
           title={
             <span className="flex flex-wrap items-center gap-3">
               {lead.businessName}
               <StatusBadge status={lead.status} />
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                {isIndividual(lead) ? (
+                  <User className="h-3 w-3" />
+                ) : (
+                  <Building2 className="h-3 w-3" />
+                )}
+                {isIndividual(lead) ? 'Individual' : 'Company'}
+              </span>
             </span>
           }
           description={
@@ -627,14 +930,14 @@ function AssignDialog({ open, onOpenChange, lead, mutate }) {
 function Field({ label, value, mono, icon: Icon }) {
   const empty = value == null || value === '';
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
         {label}
       </dt>
       <dd
         className={
-          'text-sm ' +
+          'break-words text-sm ' +
           (empty
             ? 'text-muted-foreground/60'
             : 'text-foreground ' + (mono ? 'font-mono' : ''))
@@ -656,8 +959,14 @@ function OverviewTab({ lead }) {
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-            <Field label="Business name" value={lead.businessName} icon={Building2} />
-            <Field label="Business type" value={lead.businessType} />
+            <Field
+              label={isIndividual(lead) ? 'Full name' : 'Company name'}
+              value={lead.businessName}
+              icon={isIndividual(lead) ? User : Building2}
+            />
+            {!isIndividual(lead) ? (
+              <Field label="Business type" value={lead.businessType} />
+            ) : null}
             <Field
               label="Contacted for"
               value={
@@ -666,8 +975,12 @@ function OverviewTab({ lead }) {
                   : lead.contactedFor
               }
             />
-            <Field label="Contact person" value={lead.contactPerson} />
-            <Field label="Designation" value={lead.designation} />
+            {!isIndividual(lead) ? (
+              <>
+                <Field label="Contact person" value={lead.contactPerson} />
+                <Field label="Designation" value={lead.designation} />
+              </>
+            ) : null}
             <Field label="Mobile" value={lead.mobile} icon={Phone} />
             <Field label="Email" value={lead.email} icon={Mail} />
             <Field label="City" value={lead.city} icon={MapPin} />
@@ -706,121 +1019,6 @@ function OverviewTab({ lead }) {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Kits (proposals, confirmation contracts, corporate rate agreements)         */
-/* -------------------------------------------------------------------------- */
-
-const KIT_STATUS_BADGE = {
-  draft: 'secondary',
-  sent: 'accent',
-  confirmed: 'default',
-};
-
-const KIT_TYPE_LABEL = {
-  event: 'Event Kit',
-  corporate: 'Corporate Rate Kit',
-};
-
-function KitsSection({ lead }) {
-  const [kits, setKits] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    api
-      .get(`/leads/${lead._id}/kits`)
-      .then((res) => {
-        if (active) setKits(res?.data?.data?.kits ?? []);
-      })
-      .catch((err) => {
-        toast.error(getErrorMessage(err, 'Failed to load kits'));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [lead._id]);
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Package className="h-4 w-4 text-muted-foreground" />
-            <span>Kits &amp; Proposals</span>
-            <Count value={kits.length} />
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/leads/${lead._id}/kits/new?type=event`}>
-                <Plus className="h-4 w-4" />
-                Event Kit
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/leads/${lead._id}/kits/new?type=corporate`}>
-                <Plus className="h-4 w-4" />
-                Corporate Rate Kit
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-14 w-full" />
-          </div>
-        ) : kits.length === 0 ? (
-          <EmptyState
-            icon={FileText}
-            title="No kits yet"
-            description="Create an event kit (proposal + confirmation contract) or a corporate rate kit, generate the document, email it, and upload the signed confirmation."
-          />
-        ) : (
-          <div className="space-y-2">
-            {kits.map((kit) => {
-              const label =
-                kit.kitType === 'corporate'
-                  ? kit.corporate?.companyName || 'Corporate rate agreement'
-                  : kit.event?.guestName || 'Event proposal';
-              const fileCount = (kit.confirmationFiles || []).length;
-              return (
-                <Link
-                  key={kit._id}
-                  to={`/leads/${lead._id}/kits/${kit._id}`}
-                  className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40"
-                >
-                  <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {KIT_TYPE_LABEL[kit.kitType] || kit.kitType}
-                      {kit.contractNumber ? ` · Contract #${kit.contractNumber}` : ''}
-                      {' · '}updated {formatRelative(kit.updatedAt)}
-                      {fileCount > 0
-                        ? ` · ${fileCount} signed file${fileCount > 1 ? 's' : ''}`
-                        : ''}
-                    </p>
-                  </div>
-                  <Badge variant={KIT_STATUS_BADGE[kit.status] || 'secondary'}>
-                    {kit.status}
-                  </Badge>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

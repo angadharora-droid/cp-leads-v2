@@ -6,10 +6,14 @@ import {
   Building2,
   CalendarClock,
   Check,
+  FileSignature,
+  Layers,
   MapPin,
+  Percent,
   Phone,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   TrendingUp,
   Undo2,
   User as UserIcon,
@@ -53,6 +57,12 @@ const STATUS_TOKEN = {
   Contracted: '--status-contracted',
 };
 
+/** Empty-column copy, per status. */
+const STATUS_HINT = {
+  'Non Contracted': 'No non-contracted leads match.',
+  Contracted: 'Drag a card here — or use its quick action — to mark it Contracted.',
+};
+
 function tokenFor(status) {
   return STATUS_TOKEN[status] || '--muted-foreground';
 }
@@ -89,12 +99,15 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
   const { openCount, overdue } = followUpStats(lead);
   const isContracted = lead.status === 'Contracted';
   const targetStatus = isContracted ? 'Non Contracted' : 'Contracted';
+  const name = lead.businessName || 'Untitled lead';
 
   return (
     <div
       role="button"
       tabIndex={0}
       draggable
+      aria-label={`Open ${name}`}
+      aria-busy={busy || undefined}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', lead._id);
         e.dataTransfer.effectAllowed = 'move';
@@ -107,18 +120,15 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
         }
       }}
       className={cn(
-        'group w-full cursor-pointer rounded-md border bg-card p-3 text-left shadow-sm transition-colors',
-        'hover:border-ring hover:bg-accent/30 focus:outline-none focus:ring-2 focus:ring-ring',
-        busy && 'opacity-60'
+        'surface-interactive group w-full rounded-lg border bg-card p-3 text-left shadow-card',
+        busy && 'pointer-events-none opacity-60'
       )}
       style={{ borderLeft: `3px solid hsl(var(${token}))` }}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="line-clamp-2 text-sm font-medium text-foreground">
-          {lead.businessName || 'Untitled lead'}
-        </p>
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">{name}</p>
         {contactedUnits(lead).length > 0 ? (
-          <span className="flex flex-shrink-0 flex-wrap justify-end gap-1">
+          <span className="flex flex-shrink-0 flex-wrap justify-end gap-1" aria-label="Contacted for">
             {contactedUnits(lead).map((unit) => (
               <span
                 key={unit}
@@ -158,29 +168,27 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
         {openCount > 0 ? (
           <span
             className={cn(
-              'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
-              overdue
-                ? 'bg-[hsl(var(--status-lost)/0.12)] text-[hsl(var(--status-lost))]'
-                : 'bg-muted text-muted-foreground'
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
+              overdue ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
             )}
           >
             {overdue ? (
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
             ) : (
-              <CalendarClock className="h-3 w-3" />
+              <CalendarClock className="h-3 w-3" aria-hidden="true" />
             )}
             {openCount} follow-up{openCount === 1 ? '' : 's'}
+            {overdue ? <span className="sr-only">, overdue</span> : null}
           </span>
         ) : (
-          <span className="text-[11px] text-muted-foreground/60">
-            No open follow-ups
-          </span>
+          <span className="text-[11px] text-muted-foreground/70">No open follow-ups</span>
         )}
 
         <Button
           variant="outline"
           size="sm"
-          className="h-6 px-2 text-[11px] opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+          aria-label={`Mark ${name} as ${targetStatus}`}
+          className="h-10 px-3 text-xs md:h-8 md:px-2.5"
           disabled={busy}
           onClick={(e) => {
             e.stopPropagation();
@@ -190,9 +198,9 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
           {busy ? (
             <Spinner size="sm" className="text-current" />
           ) : isContracted ? (
-            <Undo2 className="h-3 w-3" />
+            <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
           ) : (
-            <Check className="h-3 w-3" />
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
           )}
           {isContracted ? 'Non Contracted' : 'Mark Contracted'}
         </Button>
@@ -203,14 +211,16 @@ function LeadCard({ lead, onOpen, onMove, busy }) {
 
 /**
  * A status column: header (status name, count) plus its cards. Acts as a
- * drop target for drag-and-drop status changes.
+ * drop target for drag-and-drop status changes. Styled to match the shared
+ * KanbanBoard chrome (which has no drop-target hooks of its own).
  */
 function StageColumn({ status, leads, onOpen, onMove, busyId }) {
   const token = tokenFor(status);
   const [dragOver, setDragOver] = useState(false);
 
   return (
-    <div
+    <section
+      aria-label={`${status}: ${leads.length}`}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -224,40 +234,42 @@ function StageColumn({ status, leads, onOpen, onMove, busyId }) {
         if (leadId) onMove(leadId, status);
       }}
       className={cn(
-        'flex min-w-0 flex-1 flex-col rounded-lg border bg-muted/30 transition-colors',
-        dragOver && 'border-ring bg-accent/20'
+        'flex min-w-0 flex-col rounded-xl border bg-muted/30 transition-[border-color,background-color,box-shadow] duration-150',
+        dragOver && 'border-primary/50 bg-primary/5 shadow-card-hover'
       )}
     >
-      <div
-        className="flex items-center justify-between gap-2 rounded-t-lg border-b px-3 py-2.5"
-        style={{ backgroundColor: `hsl(var(${token}) / 0.10)` }}
+      <header
+        className="flex items-center justify-between gap-2 rounded-t-xl border-b bg-card/95 px-3 py-2.5 backdrop-blur"
+        style={{ boxShadow: `inset 0 3px 0 hsl(var(${token}))` }}
       >
-        <div className="flex items-center gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <span
-            className="h-2.5 w-2.5 rounded-full"
+            className="h-2 w-2 rounded-full"
             style={{ backgroundColor: `hsl(var(${token}))` }}
             aria-hidden="true"
           />
-          <span className="text-sm font-semibold text-foreground">{status}</span>
+          {status}
+        </h2>
+        <span className="flex items-center gap-2">
+          <span className="hidden text-[11px] text-muted-foreground sm:inline">
+            Drop here to mark {status}
+          </span>
           <span
-            className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+            className="rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
             style={{
-              backgroundColor: `hsl(var(${token}) / 0.18)`,
+              backgroundColor: `hsl(var(${token}) / 0.15)`,
               color: `hsl(var(${token}))`,
             }}
           >
             {leads.length}
           </span>
-        </div>
-        <span className="hidden text-[11px] text-muted-foreground sm:block">
-          Drag cards here
         </span>
-      </div>
+      </header>
 
-      <div className="grid max-h-[calc(100vh-24rem)] grid-cols-1 content-start gap-2 overflow-y-auto p-2 xl:grid-cols-2">
+      <div className="grid grid-cols-1 content-start gap-2 p-2 md:max-h-[calc(100vh-26rem)] md:min-h-[12rem] md:overflow-y-auto xl:grid-cols-2">
         {leads.length === 0 ? (
-          <p className="col-span-full px-1 py-6 text-center text-xs text-muted-foreground">
-            No leads
+          <p className="col-span-full rounded-lg border border-dashed px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
+            {STATUS_HINT[status] || 'Nothing here'}
           </p>
         ) : (
           leads.map((lead) => (
@@ -271,40 +283,78 @@ function StageColumn({ status, leads, onOpen, onMove, busyId }) {
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
 /** A compact stat tile for the totals strip. */
-function StatTile({ label, value, accent }) {
+function StatTile({ label, value, icon: Icon, accent }) {
+  const iconStyle = accent
+    ? { backgroundColor: `hsl(var(${accent}) / 0.12)`, color: `hsl(var(${accent}))` }
+    : undefined;
   return (
-    <Card className="flex flex-col justify-center px-4 py-3">
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <Card className="flex items-center gap-3 px-4 py-3">
       <span
-        className={cn('mt-0.5 text-xl font-semibold tracking-tight')}
-        style={accent ? { color: `hsl(var(${accent}))` } : undefined}
+        className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+          !accent && 'bg-primary/10 text-primary'
+        )}
+        style={iconStyle}
+        aria-hidden="true"
       >
-        {value}
+        <Icon className="h-4 w-4" />
       </span>
+      <div className="min-w-0">
+        <p className="eyebrow truncate">{label}</p>
+        <p
+          className="mt-0.5 text-2xl font-semibold leading-none tracking-tight tabular-nums text-foreground"
+          style={accent ? { color: `hsl(var(${accent}))` } : undefined}
+        >
+          {value}
+        </p>
+      </div>
     </Card>
   );
 }
 
+/** Loading placeholder mirroring the tiles, filter card and two columns. */
 function BoardSkeleton() {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {LEAD_STATUSES.map((status) => (
-        <div key={status} className="flex flex-col rounded-lg border bg-muted/30">
-          <div className="border-b px-3 py-2.5">
-            <Skeleton className="h-5 w-28" />
+    <div className="space-y-5" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading the lead pipeline</span>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className="flex items-center gap-3 px-4 py-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-6 w-10" />
+            </div>
+          </Card>
+        ))}
+      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:p-4">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 sm:w-40" />
+          <Skeleton className="h-10 sm:w-44" />
+        </CardContent>
+      </Card>
+      <div className="grid gap-4 md:grid-cols-2">
+        {LEAD_STATUSES.map((status) => (
+          <div key={status} className="flex flex-col rounded-xl border bg-muted/30">
+            <div className="flex items-center justify-between border-b bg-card/95 px-3 py-2.5">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-8 rounded-full" />
+            </div>
+            <div className="grid grid-cols-1 gap-2 p-2 xl:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-36 w-full rounded-lg" />
+              ))}
+            </div>
           </div>
-          <div className="space-y-2 p-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 w-full rounded-md" />
-            ))}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -474,22 +524,9 @@ function LeadTrackerPage() {
   return (
     <div className="space-y-5">
       <PageHeader
+        eyebrow="Admin"
         title="Lead Tracker"
         description="Drag a card between columns — or use its quick action — to update the lead's status."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchLeads({ silent: true })}
-            disabled={isLoading || isRefreshing}
-          >
-            <RefreshCw
-              className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')}
-              aria-hidden="true"
-            />
-            Refresh
-          </Button>
-        }
       />
 
       {/* Totals strip */}
@@ -498,69 +535,84 @@ function LeadTrackerPage() {
           <StatTile
             label={hasActiveFilters ? 'Matching leads' : 'Total leads'}
             value={totals.shown}
+            icon={Layers}
           />
           <StatTile
             label="Non Contracted"
             value={totals.nonContractedCount}
+            icon={Building2}
             accent="--status-non-contracted"
           />
           <StatTile
             label="Contracted"
             value={totals.contractedCount}
+            icon={FileSignature}
             accent="--status-contracted"
           />
-          <StatTile label="Conversion" value={`${totals.conversionRate}%`} />
+          <StatTile label="Conversion" value={`${totals.conversionRate}%`} icon={Percent} />
         </div>
       ) : null}
 
       {/* Filter bar */}
       {!isLoading && !error && leads.length > 0 ? (
         <Card>
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search business, contact, mobile, city, reference…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+          <CardContent className="flex flex-col gap-3 p-3 sm:p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="eyebrow inline-flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                Filters
+              </p>
+              {hasActiveFilters ? (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="h-4 w-4" aria-hidden="true" />
+                  Clear
+                </Button>
+              ) : null}
             </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  aria-label="Search leads"
+                  className="pl-9"
+                  placeholder="Search business, contact, mobile, city, reference…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
 
-            <Select value={contactedForFilter} onValueChange={setContactedForFilter}>
-              <SelectTrigger className="sm:w-[160px]">
-                <SelectValue placeholder="Contacted for" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All units</SelectItem>
-                {CONTACTED_FOR_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select value={contactedForFilter} onValueChange={setContactedForFilter}>
+                <SelectTrigger className="sm:w-[160px]" aria-label="Contacted for">
+                  <SelectValue placeholder="Contacted for" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All units</SelectItem>
+                  {CONTACTED_FOR_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Select value={execFilter} onValueChange={setExecFilter}>
-              <SelectTrigger className="sm:w-[180px]">
-                <SelectValue placeholder="Assigned to" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Anyone</SelectItem>
-                {execOptions.map((exec) => (
-                  <SelectItem key={exec.id} value={exec.id}>
-                    {exec.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {hasActiveFilters ? (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4" />
-                Clear
-              </Button>
-            ) : null}
+              <Select value={execFilter} onValueChange={setExecFilter}>
+                <SelectTrigger className="sm:w-[180px]" aria-label="Assigned to">
+                  <SelectValue placeholder="Assigned to" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Anyone</SelectItem>
+                  {execOptions.map((exec) => (
+                    <SelectItem key={exec.id} value={exec.id}>
+                      {exec.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -574,7 +626,7 @@ function LeadTrackerPage() {
           description={error}
           action={
             <Button variant="outline" size="sm" onClick={() => fetchLeads()}>
-              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Try again
             </Button>
           }
@@ -597,7 +649,7 @@ function LeadTrackerPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2" aria-label="Pipeline stages">
           {LEAD_STATUSES.map((status) => (
             <StageColumn
               key={status}
@@ -612,7 +664,7 @@ function LeadTrackerPage() {
       )}
 
       {!isLoading && !error && filteredLeads.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs tabular-nums text-muted-foreground">
           Showing {formatCompactNumber(totals.shown)} lead
           {totals.shown === 1 ? '' : 's'}
           {hasActiveFilters ? ` of ${leads.length}` : ''}. Conversion rate{' '}

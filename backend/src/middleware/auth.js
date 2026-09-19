@@ -4,6 +4,8 @@ import asyncHandler from '../utils/asyncHandler.js';
 import User from '../models/User.js';
 
 export const authenticate = asyncHandler(async (req, _res, next) => {
+  // Already resolved by an earlier guard on this request (module gate in app.js).
+  if (req.user?.user) return next();
   const header = req.headers.authorization || '';
   const [scheme, token] = header.split(' ');
 

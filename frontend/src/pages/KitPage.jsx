@@ -221,7 +221,7 @@ function defaultEventDetails(lead) {
   };
 }
 
-function defaultCorporateDetails(lead) {
+export function defaultCorporateDetails(lead) {
   return {
     companyName: lead?.businessName || '',
     contactPerson: lead?.contactPerson || '',
@@ -597,12 +597,30 @@ async function downloadKitPdf(kitId, doc, fallbackName) {
 /* Page                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export default function KitPage() {
-  const { id: leadId, kitId } = useParams();
+/**
+ * Kit editor. Stand-alone it is the event-kit page; embedded inside a rate
+ * contract page (`embedded`) it renders only the agreement form + document
+ * actions — the contract page owns the header, stage and funnel.
+ *
+ * @param {object} [props]
+ * @param {string} [props.leadIdProp] lead id when not read from the route
+ * @param {string} [props.kitIdProp] kit id when not read from the route
+ * @param {boolean} [props.embedded]
+ * @param {() => void} [props.onActivity] a document was generated, emailed or
+ *   a signed copy uploaded — the host refreshes the contract stage
+ */
+export default function KitPage({ leadIdProp, kitIdProp, embedded = false, onActivity } = {}) {
+  const params = useParams();
+  const leadId = leadIdProp || params.id;
+  const kitId = kitIdProp || params.kitId;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isNew = !kitId;
   const initialType = searchParams.get('type') === 'corporate' ? 'corporate' : 'event';
+  // A corporate kit raised from a rate contract carries the ARC (and its
+  // department) so generate / email / signed-upload advance that contract.
+  const arcParam = searchParams.get('arc') || '';
+  const departmentParam = searchParams.get('department') || '';
 
   const [lead, setLead] = useState(null);
   const [kit, setKit] = useState(null);
@@ -624,6 +642,12 @@ export default function KitPage() {
         const kitRes = await api.get(`/kits/${kitId}`);
         const kitData = pickKit(kitRes);
         if (!kitData) throw new Error('Kit not found');
+        // A corporate kit that belongs to a rate contract lives on the
+        // contract's page — send stand-alone visits there.
+        if (!embedded && kitData.arc) {
+          navigate(`/rate-contracts/${kitData.arc}`, { replace: true });
+          return;
+        }
         setKit(kitData);
         setKitType(kitData.kitType);
         setContractNumber(kitData.contractNumber || '');
@@ -648,7 +672,8 @@ export default function KitPage() {
     } finally {
       setLoading(false);
     }
-  }, [leadId, kitId, initialType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, kitId, initialType, embedded]);
 
   useEffect(() => {
     load();
@@ -682,6 +707,8 @@ export default function KitPage() {
       if (isNew) {
         const res = await api.post(`/leads/${leadId}/kits`, {
           kitType,
+          ...(arcParam && kitType === 'corporate' ? { arc: arcParam } : {}),
+          ...(departmentParam ? { department: departmentParam } : {}),
           ...buildPayload(),
         });
         const created = pickKit(res);
@@ -715,6 +742,7 @@ export default function KitPage() {
     return (
       <div className="space-y-6">
         <PageHeader
+          showTitle
           title="Kit"
           actions={
             <Button variant="outline" asChild>
@@ -739,6 +767,42 @@ export default function KitPage() {
     : `${KIT_TYPE_LABEL[kitType]} — ${
         kitType === 'event' ? form.guestName || 'Untitled' : form.companyName || 'Untitled'
       }`;
+
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        {kit ? (
+          <KitActions
+            kit={kit}
+            setKit={setKit}
+            leadId={leadId}
+            navigate={navigate}
+            embedded
+            onActivity={onActivity}
+          />
+        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Agreement details</h2>
+            <p className="text-sm text-muted-foreground">
+              The corporate room-rate agreement letter is generated from these details.
+            </p>
+          </div>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Spinner size="sm" className="text-current" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+        <CorporateKitForm form={form} update={update} />
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Spinner size="sm" className="text-current" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -768,6 +832,7 @@ export default function KitPage() {
       </div>
 
       <PageHeader
+        showTitle
         title={
           <span className="flex flex-wrap items-center gap-3">
             {title}
@@ -790,6 +855,21 @@ export default function KitPage() {
           </Button>
         }
       />
+
+      {(kit?.arc || (isNew && arcParam)) && kitType === 'corporate' ? (
+        <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p className="text-foreground">
+            <span className="font-medium">This is the agreement of a rate contract.</span>{' '}
+            {isNew
+              ? 'Create the kit to attach it; then generating the agreement, emailing it and uploading the signed copy move the contract along its funnel.'
+              : 'Generating the agreement, emailing it and uploading the signed copy move the contract along its funnel (Proposal → Awaiting signature → Contracted).'}{' '}
+            <Link to={`/leads/${leadId}`} className="text-primary underline-offset-2 hover:underline">
+              View on the lead page
+            </Link>
+          </p>
+        </div>
+      ) : null}
 
       {kit ? <KitActions kit={kit} setKit={setKit} leadId={leadId} navigate={navigate} /> : null}
 
@@ -1305,7 +1385,7 @@ function CorporateKitForm({ form, update }) {
 /* Actions: PDF download, email, confirmation upload, delete                   */
 /* -------------------------------------------------------------------------- */
 
-function KitActions({ kit, setKit, leadId, navigate }) {
+function KitActions({ kit, setKit, leadId, navigate, embedded = false, onActivity }) {
   const isEvent = kit.kitType === 'event';
   const [downloading, setDownloading] = useState(null);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -1323,6 +1403,7 @@ function KitActions({ kit, setKit, leadId, navigate }) {
     try {
       // Corporate agreements download as Word documents; event docs as PDFs.
       await downloadKitPdf(kit._id, doc, `${label}.${isEvent ? 'pdf' : 'docx'}`);
+      onActivity?.();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to generate document'));
     } finally {
@@ -1339,8 +1420,11 @@ function KitActions({ kit, setKit, leadId, navigate }) {
     try {
       const res = await api.post(`/kits/${kit._id}/confirmation-files`, formData);
       setKit(pickKit(res));
+      onActivity?.();
       toast.success(
-        'Signed confirmation uploaded — lead marked as Contracted'
+        embedded
+          ? 'Signed agreement uploaded — contract marked Contracted'
+          : 'Signed confirmation uploaded — lead marked as Contracted'
       );
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to upload files'));
@@ -1536,16 +1620,18 @@ function KitActions({ kit, setKit, leadId, navigate }) {
             Email to client
           </Button>
 
-          <div className="ml-auto">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete kit
-            </Button>
-          </div>
+          {!embedded ? (
+            <div className="ml-auto">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete kit
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         {kit.agreementFile ? (
@@ -1624,8 +1710,9 @@ function KitActions({ kit, setKit, leadId, navigate }) {
                 Signed confirmation
               </p>
               <p className="text-xs text-muted-foreground">
-                Upload the signed copy — photos (JPG/PNG) or PDF. This marks the
-                kit confirmed and the lead as Contracted.
+                {embedded
+                  ? 'Upload the signed copy — photos (JPG/PNG) or PDF. This moves the contract to Contracted and marks the lead as Contracted.'
+                  : 'Upload the signed copy — photos (JPG/PNG) or PDF. This marks the kit confirmed and the lead as Contracted.'}
               </p>
             </div>
             <input
@@ -1717,7 +1804,10 @@ function KitActions({ kit, setKit, leadId, navigate }) {
         open={emailOpen}
         onOpenChange={setEmailOpen}
         kit={kit}
-        setKit={setKit}
+        setKit={(next) => {
+          setKit(next);
+          onActivity?.();
+        }}
       />
 
       <ConfirmDialog

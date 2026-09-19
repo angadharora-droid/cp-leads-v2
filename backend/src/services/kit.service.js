@@ -1,8 +1,11 @@
+import { isManager } from '../utils/access.js';
 import mongoose from 'mongoose';
 
 import Kit from '../models/Kit.js';
 import Lead from '../models/Lead.js';
+import Arc from '../models/Arc.js';
 import { AppError } from '../utils/apiResponse.js';
+import { advanceArcForKit, attachKitToArc, detachKitFromArc } from './arc.service.js';
 import { writeAudit } from '../utils/audit.js';
 import { decryptSecret } from '../utils/mailCrypto.js';
 import { uploadBufferToGridFS, deleteGridFSFile, getKitFilesBucket } from '../utils/gridfs.js';
@@ -27,7 +30,7 @@ function isValidId(id) {
 async function loadLeadScoped(leadId, actor) {
   if (!isValidId(leadId)) throw new AppError('Lead not found', 404, 'NOT_FOUND');
   const filter = { _id: leadId };
-  if (!isAdmin(actor)) {
+  if (!isManager(actor)) {
     filter.assignedTo = new mongoose.Types.ObjectId(actor.id);
   }
   const lead = await Lead.findOne(filter);
@@ -88,8 +91,30 @@ export async function listKitsForLead(leadId, actor) {
 export async function createKit(leadId, body, actor, req) {
   const lead = await loadLeadScoped(leadId, actor);
 
+  // Department node (company leads). Optional for plain kits; when the kit is
+  // the agreement of an ARC it inherits the ARC's node.
+  let department;
+  let arc = null;
+  if (body.arc) {
+    if (body.kitType !== 'corporate') {
+      throw new AppError('Only a corporate rate kit can be attached to a rate contract', 422, 'BAD_KIT_TYPE');
+    }
+    arc = await Arc.findOne({ _id: body.arc, lead: lead._id });
+    if (!arc) throw new AppError('Rate contract not found on this lead', 404, 'NOT_FOUND');
+    if (arc.kit) {
+      throw new AppError('This rate contract already has an agreement — open that kit instead', 409, 'ARC_HAS_KIT');
+    }
+    department = arc.department;
+  } else if (body.department && lead.leadType !== 'individual') {
+    const node = (lead.departments || []).find((d) => String(d._id) === String(body.department));
+    if (!node) throw new AppError('That department does not exist on this lead', 422, 'BAD_DEPARTMENT');
+    department = node._id;
+  }
+
   const kit = new Kit({
     lead: lead._id,
+    department,
+    arc: arc?._id,
     kitType: body.kitType,
     createdBy: actor?.id,
     createdByName: actorName(actor) || undefined,
@@ -103,6 +128,7 @@ export async function createKit(leadId, body, actor, req) {
   }
 
   await kit.save();
+  if (arc) await attachKitToArc(arc, kit, lead, actor);
 
   pushHistory(
     lead,
@@ -165,6 +191,7 @@ export async function deleteKit(kitId, actor, req) {
     await deleteGridFSFile(kit.agreementFile.fileId);
   }
   await kit.deleteOne();
+  if (kit.arc) await detachKitFromArc(kit.arc, kit._id);
 
   await writeAudit({
     req,
@@ -180,9 +207,12 @@ export async function deleteKit(kitId, actor, req) {
 
 /* ---------------------------------- PDF ----------------------------------- */
 
-export async function generateKitPdf(kitId, docType, actor) {
-  const { kit } = await loadKitScoped(kitId, actor);
-  return buildKitPdf(kit, docType);
+export async function generateKitPdf(kitId, docType, actor, req) {
+  const { kit, lead } = await loadKitScoped(kitId, actor);
+  const file = await buildKitPdf(kit, docType);
+  // Generating the agreement of a rate contract moves it to Proposal.
+  if (kit.arc) await advanceArcForKit(kit, 'proposal', 'Rate agreement generated', actor, lead, req);
+  return file;
 }
 
 /* --------------------------------- Email ---------------------------------- */
@@ -304,6 +334,16 @@ export async function sendKitEmail(kitId, payload, actor, req) {
   kit.emailLog.push({ ...logEntry, status: 'sent' });
   if (kit.status === 'draft') kit.status = 'sent';
   await kit.save();
+  if (kit.arc) {
+    await advanceArcForKit(
+      kit,
+      'awaiting',
+      `Rate agreement emailed to ${payload.to} — awaiting signed copy`,
+      actor,
+      lead,
+      req
+    );
+  }
 
   pushHistory(
     lead,
@@ -369,6 +409,9 @@ export async function addConfirmationFiles(kitId, files, actor, req) {
 
   kit.status = 'confirmed';
   await kit.save();
+  if (kit.arc) {
+    await advanceArcForKit(kit, 'contracted', 'Signed agreement uploaded', actor, lead, req);
+  }
 
   pushHistory(
     lead,

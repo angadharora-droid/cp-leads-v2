@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import pdfmake from 'pdfmake';
 
 import { CP_LOGO } from './pdfAssets.js';
@@ -9,7 +10,16 @@ import {
   prettyMoney,
 } from './documentContent.js';
 
-// Standard PDF fonts — no font files needed, works everywhere (incl. serverless).
+// Bundled font files are read once into pdfmake's virtual file system, so the
+// local access policy below stays closed to the real disk.
+const MONTSERRAT = { medium: 'Montserrat-Medium.woff', bold: 'Montserrat-Bold.woff' };
+const SCRIPT = 'DancingScript-Bold.woff';
+const fontFile = (path) => fs.readFileSync(new URL(`../assets/fonts/${path}`, import.meta.url));
+pdfmake.virtualfs.writeFileSync(MONTSERRAT.medium, fontFile('montserrat/montserrat-latin-500-normal.woff'));
+pdfmake.virtualfs.writeFileSync(MONTSERRAT.bold, fontFile('montserrat/montserrat-latin-700-normal.woff'));
+pdfmake.virtualfs.writeFileSync(SCRIPT, fontFile('dancing-script/dancing-script-latin-700-normal.woff'));
+
+// Standard PDF fonts need no font files; Montserrat is the one bundled face.
 pdfmake.setFonts({
   Helvetica: {
     normal: 'Helvetica',
@@ -23,6 +33,18 @@ pdfmake.setFonts({
     italics: 'Times-Italic',
     bolditalics: 'Times-BoldItalic',
   },
+  // Open licence (src/assets/fonts/montserrat/OFL.txt): the menu face of the
+  // Function Prospectus — medium weight for text so it prints dark, bold for
+  // course names. It has no italic; the upright files stand in.
+  Montserrat: {
+    normal: MONTSERRAT.medium,
+    bold: MONTSERRAT.bold,
+    italics: MONTSERRAT.medium,
+    bolditalics: MONTSERRAT.bold,
+  },
+  // Open licence (src/assets/fonts/dancing-script/OFL.txt): the handwriting
+  // face a typed signature prints in on a signed copy, as the sign page showed it.
+  DancingScript: { normal: SCRIPT, bold: SCRIPT, italics: SCRIPT, bolditalics: SCRIPT },
 });
 // Documents are built purely from our own data; block resource loading except
 // the standard PDF font names (which resolve through the local access policy).
@@ -41,11 +63,13 @@ pdfmake.setLocalAccessPolicy((path) => STANDARD_FONT_NAMES.has(path));
 
 /* ------------------------------ Brand tokens ------------------------------ */
 // Sampled from the official Centre Point proposal template.
-const MAROON = '#921B62';
-const RULE_BROWN = '#8A4A21';
+// Exported (with the layout helpers below) so enquiry documents — banquet
+// proposal / proforma invoice — share the same house style.
+export const MAROON = '#921B62';
+export const RULE_BROWN = '#8A4A21';
 const LINE = '#3a3a3a';
 
-const styles = {
+export const styles = {
   bar: {
     color: '#ffffff',
     bold: true,
@@ -63,7 +87,7 @@ const styles = {
 };
 
 /** Thin black grid used by every bordered table in the template. */
-const GRID = {
+export const GRID = {
   hLineWidth: () => 0.6,
   vLineWidth: () => 0.6,
   hLineColor: () => LINE,
@@ -75,14 +99,14 @@ const GRID = {
 };
 
 /** Full-width maroon bar row spanning `span` columns. */
-function barRow(text, span) {
+export function barRow(text, span) {
   const row = [{ text, style: 'bar', colSpan: span, fillColor: MAROON }];
   for (let i = 1; i < span; i += 1) row.push({});
   return row;
 }
 
 /** Standalone maroon section bar (its own single-cell table). */
-function sectionBar(text, margin = [0, 10, 0, 0]) {
+export function sectionBar(text, margin = [0, 10, 0, 0]) {
   return {
     table: { widths: ['*'], body: [[{ text, style: 'bar', fillColor: MAROON }]] },
     layout: GRID,
@@ -90,14 +114,14 @@ function sectionBar(text, margin = [0, 10, 0, 0]) {
   };
 }
 
-function labelValueRows(pairs) {
+export function labelValueRows(pairs) {
   return pairs.map(([label, value]) => [
     { text: label, style: 'label' },
     { text: value || '—', style: 'value' },
   ]);
 }
 
-function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docStyles = styles } = {}) {
+export function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docStyles = styles } = {}) {
   return {
     pageSize: 'A4',
     pageMargins: [42, 92, 42, 52],
@@ -141,7 +165,7 @@ function docBase(content, footerLabel, { font = 'Helvetica', fontSize = 9, docSt
   };
 }
 
-function renderToBuffer(docDefinition) {
+export function renderToBuffer(docDefinition) {
   return pdfmake.createPdf(docDefinition).getBuffer();
 }
 

@@ -24,7 +24,7 @@ export async function getMyFollowUps(currentUser) {
   }
 
   const match = {};
-  if (currentUser.role !== 'admin') {
+  if (!['admin', 'manager'].includes(currentUser.role)) {
     match.assignedTo = new mongoose.Types.ObjectId(currentUser.id);
   }
 

@@ -99,9 +99,15 @@ export const corporateDetailsSchema = z.object({
   notes: z.string().trim().max(5000).default(''),
 });
 
+const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
+
 export const createKitSchema = z
   .object({
     kitType: z.enum(['event', 'corporate']),
+    // Branch/department node of a company lead the kit is raised for.
+    department: objectId.optional(),
+    // Rate contract this corporate kit is the agreement of.
+    arc: objectId.optional(),
     contractNumber: z.string().trim().max(50).optional(),
     event: eventDetailsSchema.optional(),
     corporate: corporateDetailsSchema.optional(),
