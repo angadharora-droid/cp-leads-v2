@@ -78,6 +78,23 @@ function dash(value) {
   return value ? String(value) : '—';
 }
 
+/** The per-guest menu rate at the catalog's own rates, before any offer. */
+function rackMenuRate(fn) {
+  const items = [fn.menuType, ...(fn.addOns || [])].filter((item) => item && item.name);
+  if (items.length) {
+    return items.filter((item) => item.pricing !== 'flat').reduce((sum, item) => sum + (Number(item.rate) || 0), 0);
+  }
+  const pax = Number(fn.pax) || 0;
+  return pax ? Math.round((Number(fn.rackRate) || 0) / pax) : 0;
+}
+
+/** "Rack Rs. 300" under an offered rate, only when the offer differs from the rack. */
+function rackNote(rack, offered) {
+  return rack && rack !== offered ? `Rack ${money(rack)}` : '';
+}
+
+const RACK_NOTE = "Rack rate is the hotel's published rate; the rate shown above it is the rate offered to you.";
+
 /* ------------------------------- Table pieces ------------------------------ */
 
 /** Maroon header cell of a data table. */
@@ -303,7 +320,7 @@ function roomBlock(enquiry) {
 
 /* ------------------------------ Event and meals ---------------------------- */
 
-function eventMealTable(enquiry) {
+function eventMealTable(enquiry, { showRack = false } = {}) {
   const headers = ['Date', 'Event Type', 'Venue', 'Minimum Guaranteed', 'Type of Menu', 'Rate', 'Estimated Revenue'];
   const rows = sortedFunctions(enquiry).map((fn) => {
     const times = fnSessionDocs(fn).map(sessionTimes).filter(Boolean).join(', ');
@@ -316,7 +333,7 @@ function eventMealTable(enquiry) {
       cell(primary, { sub: addOns.length ? `Add-on rooms: ${addOns.join(', ')}` : '' }),
       cell(fn.pax ? String(fn.pax) : '', { alignment: 'right' }),
       cell(menuLabel(fn)),
-      cell(rate ? money(rate) : '', { alignment: 'right' }),
+      cell(rate ? money(rate) : '', { alignment: 'right', sub: showRack ? rackNote(rackMenuRate(fn), rate) : '' }),
       cell(revenue ? money(revenue) : '', { alignment: 'right', bold: true }),
     ];
   });
@@ -333,7 +350,7 @@ function eventMealTable(enquiry) {
  * requirement from Banquet Setup follows as its own line, then the one
  * figure the client is quoted.
  */
-function requirementsTable(enquiry) {
+function requirementsTable(enquiry, { showRack = false } = {}) {
   const liquor = [];
   const extras = [];
   for (const fn of enquiry.functions || []) {
@@ -346,6 +363,7 @@ function requirementsTable(enquiry) {
         name: item.name,
         details: flat ? when : `${when} · ${pax} pax`,
         rate: rate ? money(rate) : '',
+        rack: showRack ? rackNote(Number(item.rate) || 0, rate) : '',
         revenue: rate ? money((flat ? 1 : pax) * rate) : '',
       };
     };
@@ -353,35 +371,49 @@ function requirementsTable(enquiry) {
     for (const item of fn.requirements || []) if (item?.name) extras.push(describe(item));
     for (const v of fn.hallChargeVenues || []) {
       if (v?.name && Number(v.hallCharge) > 0) {
-        extras.push({ name: `Hall Charges — ${v.name}`, details: when, rate: money(v.hallCharge), revenue: money(v.hallCharge) });
+        extras.push({ name: `Hall Charges — ${v.name}`, details: when, rate: money(v.hallCharge), rack: '', revenue: money(v.hallCharge) });
       }
     }
-    if (fn.additionalRequirement) extras.push({ name: fn.additionalRequirement, details: when, rate: '', revenue: '' });
+    if (fn.additionalRequirement) extras.push({ name: fn.additionalRequirement, details: when, rate: '', rack: '', revenue: '' });
   }
 
   // Several items share one fixed row; every column repeats the same
   // two-line rhythm (value, then a small line) so the amounts stay level
   // with their items.
   const subLine = (text) => ({ text: text || ' ', fontSize: 7.2, color: SHEET.muted, margin: [0, 1, 0, 3] });
-  const itemColumn = (items, pick, alignment) => ({
+  const itemColumn = (items, pick, alignment, sub = () => '') => ({
     stack: items.map((i) => ({
       stack: [
         { text: dash(pick(i)), fontSize: BODY_SIZE, alignment, color: pick(i) ? SHEET.ink : SHEET.faint },
-        subLine(alignment === 'left' ? i.details : ''),
+        { ...subLine(sub(i)), alignment },
       ],
     })),
   });
   const fixedRow = (title, items) => [
     cell(title, { bold: true }),
-    items.length ? itemColumn(items, (i) => i.name, 'left') : { text: 'Kindly Advise', fontSize: BODY_SIZE, color: SHEET.muted, italics: true },
-    items.length ? itemColumn(items, (i) => i.rate, 'right') : cell('', { alignment: 'right' }),
+    items.length
+      ? itemColumn(items, (i) => i.name, 'left', (i) => i.details)
+      : { text: 'Kindly Advise', fontSize: BODY_SIZE, color: SHEET.muted, italics: true },
+    items.length ? itemColumn(items, (i) => i.rate, 'right', (i) => i.rack) : cell('', { alignment: 'right' }),
     items.length ? itemColumn(items, (i) => i.revenue, 'right') : cell('', { alignment: 'right' }),
   ];
   const lineRow = (item) => [
     cell(item.name, { bold: true }),
     cell(item.details),
-    cell(item.rate, { alignment: 'right' }),
+    cell(item.rate, { alignment: 'right', sub: item.rack }),
     cell(item.revenue, { alignment: 'right' }),
+  ];
+
+  // On the proposal the client also sees what the same event comes to at
+  // the hotel's published rates, so the offer can be read against it.
+  const offeredTotal = eventTotal(enquiry);
+  const rackTotal = (enquiry.functions || []).reduce((sum, fn) => sum + (Number(fn.rackRate) || 0), 0);
+  const compare = showRack && rackTotal > 0 && rackTotal !== offeredTotal;
+  const rackRow = [
+    { text: 'Value at rack rates (exclusive of taxes)', color: SHEET.muted, fontSize: 8.4, alignment: 'right', colSpan: 3, margin: [0, 1, 0, 0] },
+    {},
+    {},
+    { text: money(rackTotal), color: SHEET.muted, fontSize: 9, alignment: 'right', decoration: 'lineThrough', margin: [0, 1, 0, 0] },
   ];
   const totalRow = [
     {
@@ -395,7 +427,7 @@ function requirementsTable(enquiry) {
     },
     {},
     {},
-    { text: money(eventTotal(enquiry)), bold: true, fontSize: 10.5, color: SHEET.maroon, alignment: 'right', fillColor: SHEET.tint, margin: [0, 1, 0, 1] },
+    { text: money(offeredTotal), bold: true, fontSize: 10.5, color: SHEET.maroon, alignment: 'right', fillColor: SHEET.tint, margin: [0, 1, 0, 1] },
   ];
   return [
     sectionTitle('Other Requirements', { margin: [0, 14, 0, 6] }),
@@ -407,9 +439,11 @@ function requirementsTable(enquiry) {
         fixedRow('Soft Beverages', []),
         fixedRow('AV Equipment', []),
         ...extras.map(lineRow),
+        ...(compare ? [rackRow] : []),
         totalRow,
       ]
     ),
+    ...(compare ? [{ text: RACK_NOTE, fontSize: 7.4, color: SHEET.muted, italics: true, margin: [0, 4, 0, 0] }] : []),
   ];
 }
 
@@ -746,12 +780,15 @@ function acceptanceCard(signature) {
 /* ------------------------------- Document ---------------------------------- */
 
 async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature }) {
+  // The proposal shows the rack rate beside each offered rate; the contract
+  // carries the agreed rates alone.
+  const showRack = kind === 'proposal';
   const content = [
     factsStrip(enquiry, kind),
     guestCards(enquiry, lead),
     ...(hasRooms(enquiry) ? roomBlock(enquiry) : roomSections()),
-    ...eventMealTable(enquiry),
-    ...requirementsTable(enquiry),
+    ...eventMealTable(enquiry, { showRack }),
+    ...requirementsTable(enquiry, { showRack }),
     await facilitiesBlock(),
     ...termsBlock(),
     { ...closingCards(preparedBy), unbreakable: true },
