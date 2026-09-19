@@ -15,7 +15,7 @@ import { sendMail, isEmailConfigured } from './email.service.js';
 import { getSettings } from './banquetConfig.service.js';
 // Proposal, contract and their signed copies print in the house sheet style;
 // the pro-forma, addendum and credit form keep the Word-template layouts.
-import { buildEnquiryProposalPdf, buildContractPdf, buildSignedDocumentPdf } from './proposalPdf.service.js';
+import { buildEnquiryProposalPdf, buildContractPdf, buildSignedDocumentPdf, sessionTimingLines } from './proposalPdf.service.js';
 import { buildProformaPdf, buildAddendumPdf, addendumChanges, buildCreditFormPdf } from './enquiryPdf.service.js';
 import { messagesFor, MESSAGE_KINDS } from './enquiryMessages.js';
 import env from '../config/env.js';
@@ -908,6 +908,31 @@ function printSnapshot(enquiry) {
   };
 }
 
+/** Freeze all variable PDF inputs, with no PDF bytes or file attachments. */
+async function documentPrint(enquiry, lead, actor) {
+  return JSON.parse(JSON.stringify({
+    ...printSnapshot(enquiry),
+    lead: { businessName: lead.businessName, mobile: lead.mobile, email: lead.email },
+    preparedBy: preparedBy(actor, enquiry),
+    sessionTimings: await sessionTimingLines(),
+  }));
+}
+
+async function buildIssuedPdf(enquiry, lead, actor, document) {
+  const stored = await Enquiry.findById(enquiry._id).select('documentPrints').lean();
+  const saved = stored?.documentPrints?.[document];
+  const print = saved || await documentPrint(enquiry, lead, actor);
+  const build = document === 'contract' ? buildContractPdf : buildEnquiryProposalPdf;
+  const pdf = await build(print, print.lead, print);
+  if (!saved) {
+    await Enquiry.updateOne(
+      { _id: enquiry._id },
+      { $set: { [`documentPrints.${document}`]: print } }
+    );
+  }
+  return pdf;
+}
+
 /** What the documents print, taken before and after an edit. */
 function captureForRevision(enquiry) {
   const fields = {};
@@ -1007,7 +1032,6 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
   let number = '';
   let firstAddendum = false;
   // The issue the client may hold, before this edit rewrites it.
-  let superseded = null;
   const issueOf = (kind, doc) => ({
     document: kind,
     number: doc.number,
@@ -1016,9 +1040,12 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
     sentAt: doc.sentAt,
     sentTo: doc.sentTo || '',
   });
+  // Both PDFs read the enquiry's details, even once a contract exists.
+  const superseded = ['proposal', 'contract']
+    .filter((kind) => enquiry[kind]?.number)
+    .map((kind) => issueOf(kind, enquiry[kind]));
   const total = (capture, field) => (capture?.snapshot?.functions || []).reduce((sum, fn) => sum + (Number(fn[field]) || 0), 0);
   if (enquiry.contract?.sentAt && enquiry.agreed?.at) {
-    superseded = issueOf('contract', enquiry.contract);
     const current = snapshotOf(enquiry);
     if (!sameSnapshot(current, enquiry.agreed)) {
       const result = await upsertPendingAddendum(enquiry, current);
@@ -1033,13 +1060,11 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
       number = enquiry.contract.number;
     }
   } else if (enquiry.contract?.number) {
-    superseded = issueOf('contract', enquiry.contract);
     enquiry.contract.generatedAt = new Date();
     if (enquiry.proforma?.number) enquiry.proforma.generatedAt = new Date();
     document = 'contract';
     number = enquiry.contract.number;
   } else if (enquiry.proposal?.number) {
-    superseded = issueOf('proposal', enquiry.proposal);
     bumpProposalRevision(enquiry);
     enquiry.proposal.generatedAt = new Date();
     enquiry.proposal.sentAt = undefined;
@@ -1066,11 +1091,25 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
   await enquiry.save();
   // The superseded issue is kept as data, appended without touching the
   // earlier ones (their `print` is not loaded on the document).
-  if (superseded && before?.print) {
+  if (superseded.length && before?.print) {
+    const stored = await Enquiry.findById(enquiry._id).select('documentPrints').lean();
+    // Older records have no render-time snapshot. Preserve their available
+    // pre-edit details, and stop future previews depending on live lookups.
+    const needsFallback = superseded.some((issue) => !stored?.documentPrints?.[issue.document]);
+    const fallback = needsFallback ? await documentPrint(before.print, lead, null) : null;
+    const issues = superseded.map((issue) => ({
+      ...issue,
+      supersededAt: new Date(),
+      supersededByName: actorName(actor) || '',
+      print: stored?.documentPrints?.[issue.document] || fallback,
+    }));
     await Enquiry.updateOne(
       { _id: enquiry._id },
-      { $push: { issues: { ...superseded, supersededAt: new Date(), supersededByName: actorName(actor) || '', print: before.print } } }
+      { $push: { issues: { $each: issues } }, $unset: { documentPrints: 1 } }
     );
+    // Return the new history immediately, keeping the heavy print data private.
+    enquiry.issues.push(...issues.map(({ print, ...issue }) => issue));
+    enquiry.unmarkModified('issues');
   }
   if (document === 'addendum' && firstAddendum) {
     pushLeadHistory(lead, actor, 'enquiry_addendum', `Addendum ${number} to contract ${enquiry.contract.number} made`);
@@ -1338,7 +1377,7 @@ export async function generateProposal(enquiryId, actor, req) {
   requireBanquet(enquiry, 'Proposals');
   await ensureProposalNumber(enquiry);
   enquiry.proposal.generatedAt = enquiry.proposal.generatedAt || new Date();
-  const pdf = await buildEnquiryProposalPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pdf = await buildIssuedPdf(enquiry, lead, actor, 'proposal');
   let advanced = false;
   if (enquiry.stage === 'waitlist') {
     // Quoting while waiting is fine; the stage resumes as Proposal when the slot frees.
@@ -1371,7 +1410,7 @@ export async function downloadProposal(enquiryId, actor) {
     enquiry.proposal.generatedAt = new Date();
     await enquiry.save();
   }
-  return buildEnquiryProposalPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  return buildIssuedPdf(enquiry, lead, actor, 'proposal');
 }
 
 /** Emails the proposal (house body HCP.M.EP). Enquiry → waitlist. */
@@ -1384,7 +1423,7 @@ export async function emailProposal(enquiryId, payload, actor, req) {
 
   await ensureProposalNumber(enquiry);
   enquiry.proposal.generatedAt = enquiry.proposal.generatedAt || new Date();
-  const pdf = await buildEnquiryProposalPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pdf = await buildIssuedPdf(enquiry, lead, actor, 'proposal');
 
   const standard = messagesFor('proposal', { enquiry, lead, senderName: sender.senderName });
   const subject = payload.subject || standard.subject;
@@ -1454,7 +1493,7 @@ export async function generateContract(enquiryId, actor, req) {
   enquiry.contract.generatedAt = enquiry.contract.generatedAt || new Date();
   await ensureProformaNumber(enquiry);
   enquiry.proforma.generatedAt = enquiry.proforma.generatedAt || new Date();
-  const pdf = await buildContractPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pdf = await buildIssuedPdf(enquiry, lead, actor, 'contract');
   await enquiry.save();
   if (first) {
     pushLeadHistory(lead, actor, 'enquiry_contract', `Contract ${enquiry.contract.number} and pro-forma ${enquiry.proforma.number} made`);
@@ -1474,7 +1513,7 @@ export async function generateContract(enquiryId, actor, req) {
 export async function downloadContract(enquiryId, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
   if (!enquiry.contract?.number) throw new AppError('No contract yet', 404, 'NOT_FOUND');
-  return buildContractPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  return buildIssuedPdf(enquiry, lead, actor, 'contract');
 }
 
 /**
@@ -1484,16 +1523,20 @@ export async function downloadContract(enquiryId, actor) {
  */
 export async function getIssuePdf(enquiryId, index, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
-  const n = Number.parseInt(index, 10);
-  const stored = Number.isInteger(n) && n >= 0 ? await Enquiry.findById(enquiry._id).select('+issues.print').lean() : null;
+  const n = /^\d+$/.test(String(index)) ? Number(index) : NaN;
+  const stored = Number.isSafeInteger(n) ? await Enquiry.findById(enquiry._id).select('+issues.print').lean() : null;
   const issue = stored?.issues?.[n];
   if (!issue?.print) throw new AppError('That issue is not on record', 404, 'NOT_FOUND');
   const printed = { ...issue.print, _id: enquiry._id, createdByName: issue.print.createdByName || enquiry.createdByName };
-  const options = { preparedBy: preparedBy(actor, enquiry) };
+  const options = {
+    preparedBy: issue.print.preparedBy || preparedBy(null, printed),
+    sessionTimings: issue.print.sessionTimings,
+  };
+  const printedLead = issue.print.lead || lead;
   const built =
     issue.document === 'contract'
-      ? await buildContractPdf(printed, lead, options)
-      : await buildEnquiryProposalPdf(printed, lead, options);
+      ? await buildContractPdf(printed, printedLead, options)
+      : await buildEnquiryProposalPdf(printed, printedLead, options);
   return { ...built, filename: built.filename.replace(/\.pdf$/i, ' (superseded).pdf') };
 }
 
@@ -1522,7 +1565,7 @@ export async function emailContract(enquiryId, payload, actor, req) {
   enquiry.contract.generatedAt = enquiry.contract.generatedAt || new Date();
   await ensureProformaNumber(enquiry);
   enquiry.proforma.generatedAt = enquiry.proforma.generatedAt || new Date();
-  const pdf = await buildContractPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pdf = await buildIssuedPdf(enquiry, lead, actor, 'contract');
   const pfi = await buildProformaPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
 
   // A fresh sign link on every send; the previous link stops working.

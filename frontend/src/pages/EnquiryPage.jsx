@@ -168,31 +168,36 @@ function DocumentRow({ icon: Icon, title, number, generatedAt, sentAt, sentTo, e
  * previewed or downloaded; no PDF is stored.
  */
 function EarlierIssues({ issues, document, icon, preview, download, downloading }) {
-  const earlier = (issues || []).map((issue, index) => ({ issue, index })).filter(({ issue }) => issue.document === document);
+  const earlier = (issues || []).map((issue, index) => ({ issue, index })).filter(({ issue }) => issue.document === document).reverse();
   if (!earlier.length) return null;
   const noun = document === 'contract' ? 'Contract' : 'Proposal';
   return (
-    <div className="space-y-2 pl-5">
-      {earlier.map(({ issue, index }) => {
-        const key = `issue-${index}`;
-        const name = `${noun} ${issue.number} (superseded).pdf`;
-        return (
-          <DocumentRow
-            key={key}
-            icon={icon}
-            title={`Earlier ${noun.toLowerCase()}`}
-            number={issue.number}
-            generatedAt={issue.generatedAt}
-            sentAt={issue.sentAt}
-            sentTo={issue.sentTo}
-            extra={`Superseded ${formatDate(issue.supersededAt)}${issue.supersededByName ? ` by ${issue.supersededByName}` : ''}`}
-            onPreview={preview(key, `issues/${index}/pdf`, name)}
-            onDownload={download(key, `issues/${index}/pdf`, name)}
-            downloading={downloading === key}
-          />
-        );
-      })}
-    </div>
+    <details className="rounded-lg border bg-muted/20 px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium">
+        Previous {noun.toLowerCase()} versions ({earlier.length})
+      </summary>
+      <div className="mt-3 space-y-2">
+        {earlier.map(({ issue, index }) => {
+          const key = `issue-${index}`;
+          const name = `${noun} ${issue.number} (superseded).pdf`;
+          return (
+            <DocumentRow
+              key={key}
+              icon={icon}
+              title={`Previous ${noun.toLowerCase()}`}
+              number={issue.number}
+              generatedAt={issue.generatedAt}
+              sentAt={issue.sentAt}
+              sentTo={issue.sentTo}
+              extra={`Superseded ${formatDate(issue.supersededAt)}${issue.supersededByName ? ` by ${issue.supersededByName}` : ''}`}
+              onPreview={preview(key, `issues/${index}/pdf`, name)}
+              onDownload={download(key, `issues/${index}/pdf`, name)}
+              downloading={downloading === key}
+            />
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
