@@ -17,6 +17,10 @@ const env = {
   REFRESH_TOKEN_TTL_DAYS: num(process.env.REFRESH_TOKEN_TTL_DAYS, 7),
   BCRYPT_ROUNDS: num(process.env.BCRYPT_ROUNDS, 10),
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  // Folder holding the built React app (frontend/dist). When set, this
+  // process serves the app as well as the API, so one container hosts the
+  // whole CRM. The Dockerfile sets it; leave it empty for local development.
+  SERVE_CLIENT_DIR: process.env.SERVE_CLIENT_DIR || '',
 
   // SMTP settings for proposal emails. Email sending is disabled until these
   // are configured (SMTP_HOST + SMTP_USER + SMTP_PASS at minimum).
