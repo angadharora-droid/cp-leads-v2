@@ -18,6 +18,7 @@ import {
   Pencil,
   Phone,
   ReceiptText,
+  Route,
   User,
   Users,
 } from 'lucide-react';
@@ -45,6 +46,14 @@ import { EnquiryActionBar, EnquiryNotices, openBlob, saveBlob } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  SidePanel,
+  SidePanelContent,
+  SidePanelHeader,
+  SidePanelTitle,
+  SidePanelDescription,
+  SidePanelBody,
+} from '@/components/ui/side-panel';
 
 // Waitlist is a holding column, not a step, so the stepper skips it.
 const FUNNEL = ENQUIRY_STAGES.filter((s) => !['lost', 'cancelled', 'waitlist'].includes(s.key));
@@ -167,6 +176,8 @@ export default function EnquiryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
+  // The life cycle opens in a panel from the Functions card, on demand.
+  const [lifecycleOpen, setLifecycleOpen] = useState(false);
   // Which function the edit panel was opened on (a function card was clicked), if any.
   const [focusFn, setFocusFn] = useState(null);
   const openEdit = (index = null) => {
@@ -398,8 +409,43 @@ export default function EnquiryPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {/* Who the hotel deals with and who is billed, side by side above the functions. */}
+          <div className="grid gap-6 sm:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <User className="h-4 w-4 text-primary" />
+                  Contact
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Row label="Name">{enquiry.contactName}</Row>
+                <Row label="Email">{enquiry.contactEmail}</Row>
+                <Row label="Phone">{enquiry.contactPhone}</Row>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  Documents and emails for this enquiry go to this contact. Change it from the menu → Edit contact.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ReceiptText className="h-4 w-4 text-primary" />
+                  Billing
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Row label="Billing name">{enquiry.billingName || lead.businessName}</Row>
+                <Row label="GST">{enquiry.gstNumber}</Row>
+                <Row label="PAN">{enquiry.panNumber}</Row>
+                <Row label="Payment terms">{enquiry.paymentTerms}</Row>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <CalendarDays className="h-4 w-4 text-primary" />
                 Functions
@@ -407,6 +453,10 @@ export default function EnquiryPage() {
                   {(enquiry.functions || []).length}
                 </span>
               </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setLifecycleOpen(true)}>
+                <Route className="h-4 w-4" />
+                Life cycle
+              </Button>
             </CardHeader>
             <CardContent className="space-y-3">
               {(enquiry.functions || []).length === 0 ? (
@@ -592,9 +642,6 @@ export default function EnquiryPage() {
         </div>
 
         <div className="space-y-6">
-          {/* The story so far sits beside the functions; reloads when the enquiry changes. */}
-          <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} compact />
-
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -623,37 +670,6 @@ export default function EnquiryPage() {
                   ))}
                 </ul>
               )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <User className="h-4 w-4 text-primary" />
-                Contact
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Row label="Name">{enquiry.contactName}</Row>
-              <Row label="Email">{enquiry.contactEmail}</Row>
-              <Row label="Phone">{enquiry.contactPhone}</Row>
-              <p className="pt-1 text-xs text-muted-foreground">
-                Documents and emails for this enquiry go to this contact. Change it from the menu → Edit contact.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ReceiptText className="h-4 w-4 text-primary" />
-                Billing
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Row label="Billing name">{enquiry.billingName || lead.businessName}</Row>
-              <Row label="GST">{enquiry.gstNumber}</Row>
-              <Row label="PAN">{enquiry.panNumber}</Row>
-              <Row label="Payment terms">{enquiry.paymentTerms}</Row>
             </CardContent>
           </Card>
 
@@ -698,6 +714,24 @@ export default function EnquiryPage() {
 
         </div>
       </div>
+
+      {/* The story so far, opened from the Functions card; loads only when opened. */}
+      <SidePanel open={lifecycleOpen} onOpenChange={setLifecycleOpen}>
+        <SidePanelContent className="sm:w-[min(92vw,46rem)]">
+          <SidePanelHeader>
+            <SidePanelTitle className="flex items-center gap-2">
+              <Route className="h-4 w-4 text-primary" />
+              Life cycle
+            </SidePanelTitle>
+            <SidePanelDescription>
+              Every stage {lead.businessName} reached, with the documents, emails, edits and signatures along the way.
+            </SidePanelDescription>
+          </SidePanelHeader>
+          <SidePanelBody>
+            {lifecycleOpen ? <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} bare /> : null}
+          </SidePanelBody>
+        </SidePanelContent>
+      </SidePanel>
 
       <EnquiryDialog
         open={editOpen}
