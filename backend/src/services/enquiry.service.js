@@ -13,15 +13,10 @@ import { decryptSecret } from '../utils/mailCrypto.js';
 import { uploadBufferToGridFS, getKitFilesBucket } from '../utils/gridfs.js';
 import { sendMail, isEmailConfigured } from './email.service.js';
 import { getSettings } from './banquetConfig.service.js';
-import {
-  buildEnquiryProposalPdf,
-  buildContractPdf,
-  buildSignedDocumentPdf,
-  buildProformaPdf,
-  buildAddendumPdf,
-  addendumChanges,
-  buildCreditFormPdf,
-} from './enquiryPdf.service.js';
+// Proposal, contract and their signed copies print in the house sheet style;
+// the pro-forma, addendum and credit form keep the Word-template layouts.
+import { buildEnquiryProposalPdf, buildContractPdf, buildSignedDocumentPdf } from './proposalPdf.service.js';
+import { buildProformaPdf, buildAddendumPdf, addendumChanges, buildCreditFormPdf } from './enquiryPdf.service.js';
 import { messagesFor, MESSAGE_KINDS } from './enquiryMessages.js';
 import env from '../config/env.js';
 
