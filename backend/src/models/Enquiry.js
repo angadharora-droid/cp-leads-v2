@@ -458,6 +458,8 @@ const enquirySchema = new Schema(
     revisions: { type: [revisionSchema], default: [] },
     // Every proposal and contract issue those edits superseded, as data.
     issues: { type: [issueSchema], default: [] },
+    // Latest rendered proposal/contract inputs, JSON only; moved to issues on edit.
+    documentPrints: { type: Schema.Types.Mixed, select: false },
     advance: { type: advanceSchema, default: () => ({}) },
     cancellation: { type: cancellationSchema, default: () => ({}) },
     credit: { type: creditSchema, default: () => ({}) },

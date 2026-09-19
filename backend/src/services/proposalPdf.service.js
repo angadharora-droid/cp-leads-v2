@@ -476,7 +476,7 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
 }
 
 /** The configured sessions in the template's "Morning session – 8.00 am till 12 noon" style. */
-async function sessionTimingLines() {
+export async function sessionTimingLines() {
   const sessions = await BanquetSession.find().sort({ order: 1, name: 1 }).lean();
   if (sessions.length) {
     return sessions.map((s) => {
@@ -494,8 +494,8 @@ async function sessionTimingLines() {
   ];
 }
 
-async function facilitiesBlock() {
-  const sessions = await sessionTimingLines();
+async function facilitiesBlock(savedSessionTimings) {
+  const sessions = savedSessionTimings ?? await sessionTimingLines();
   const columns = cardRow(
     [
       card('Session timings', [bullets(sessions)]),
@@ -807,7 +807,7 @@ function acceptanceCard(signature) {
 
 /* ------------------------------- Document ---------------------------------- */
 
-async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature }) {
+async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature, sessionTimings }) {
   // Both documents show the rack rate beside each offered rate, so the client
   // sees the published rate and the rate they were given.
   const showRack = kind === 'proposal' || kind === 'contract';
@@ -817,7 +817,7 @@ async function documentContent(enquiry, lead, { kind, preparedBy, clientSignatur
     ...(hasRooms(enquiry) ? roomBlock(enquiry) : roomSections()),
     ...eventMealTable(enquiry, { showRack }),
     ...requirementsTable(enquiry, { showRack }),
-    await facilitiesBlock(),
+    await facilitiesBlock(sessionTimings),
     ...termsBlock(),
     { ...closingCards(preparedBy), unbreakable: true },
   ];
@@ -855,7 +855,7 @@ function buildDocument(enquiry, lead, content, { kind, chip, images = {} }) {
  */
 export async function buildEnquiryProposalPdf(enquiry, lead, options = {}) {
   const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
-  const content = await documentContent(enquiry, lead, { kind: 'proposal', preparedBy });
+  const content = await documentContent(enquiry, lead, { kind: 'proposal', preparedBy, sessionTimings: options.sessionTimings });
   return {
     buffer: await renderToBuffer(buildDocument(enquiry, lead, content, { kind: 'proposal' })),
     filename: `Proposal ${safeName(enquiry.proposal?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
@@ -866,7 +866,7 @@ export async function buildEnquiryProposalPdf(enquiry, lead, options = {}) {
 /** The contract (HCP.EC…): the proposal's terms under a contract number and date of confirmation. */
 export async function buildContractPdf(enquiry, lead, options = {}) {
   const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
-  const content = await documentContent(enquiry, lead, { kind: 'contract', preparedBy });
+  const content = await documentContent(enquiry, lead, { kind: 'contract', preparedBy, sessionTimings: options.sessionTimings });
   return {
     buffer: await renderToBuffer(buildDocument(enquiry, lead, content, { kind: 'contract' })),
     filename: `Contract ${safeName(enquiry.contract?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),

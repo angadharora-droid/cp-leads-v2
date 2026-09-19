@@ -23,7 +23,19 @@ Emailing requires SMTP settings in `backend/.env` (see `backend/.env.example`):
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optionally `SMTP_SECURE` / `MAIL_FROM`.
 For Gmail, use an [App Password](https://myaccount.google.com/apppasswords), not the account password.
 
+## Previous proposal and contract versions
+
+Banquet enquiries show **Previous proposal versions** and **Previous contract versions**
+under Documents, with Preview and Download actions. Edits preserve the previous document
+inputs as JSON in MongoDB; PDF files are generated in memory when opened, not stored.
+Newly rendered documents also capture the guest details, preparer and configured session
+timings so later changes do not alter archived versions. JSON uses a small amount of database
+space. Historical versions that were never captured cannot be recovered; older saved versions
+use the information available in their snapshots. Uploaded and digitally signed copies retain
+their existing storage behavior.
+
 ## Stack
+
 - **Frontend:** React 18 + Vite, Tailwind CSS, ShadCN-style UI (Radix), React Hook Form + Zod, Recharts
 - **Backend:** Node.js + Express (services layer, Zod validation, Helmet, rate limiting), pdfmake (PDF generation), Nodemailer (email), Multer + GridFS (signed-confirmation uploads)
 - **Database:** MongoDB + Mongoose
