@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { attachMovementHooks } from './movementHooks.js';
+
 const { Schema, model } = mongoose;
 
 /** The clause printed under Remarks on every estimate. */
@@ -106,6 +108,8 @@ const banquetEstimateSchema = new Schema(
 
 banquetEstimateSchema.index({ prospectus: 1 }, { unique: true });
 banquetEstimateSchema.index({ date: 1 });
+
+attachMovementHooks(banquetEstimateSchema, { entityType: 'BanquetEstimate', field: 'status' });
 
 const BanquetEstimate = model('BanquetEstimate', banquetEstimateSchema);
 

@@ -23,6 +23,7 @@ import signRoutes from './routes/sign.routes.js';
 import arcRoutes from './routes/arc.routes.js';
 import prospectusRoutes from './routes/prospectus.routes.js';
 import estimateRoutes from './routes/estimate.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 import { authenticate } from './middleware/auth.js';
 import { requireModule } from './middleware/rbac.js';
 
@@ -65,6 +66,8 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+// In-app notifications: every account has a feed, whatever sections it holds.
+app.use('/api/notifications', notificationRoutes);
 
 // The Leads CRM is one module; the Function Prospectus section is another.
 // Each user opens only the modules assigned to them (admins open all).

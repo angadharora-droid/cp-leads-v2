@@ -26,6 +26,7 @@ import UsersPage from '@/pages/UsersPage';
 import AuditLogsPage from '@/pages/AuditLogsPage';
 import ChangePasswordPage from '@/pages/ChangePasswordPage';
 import EmailSettingsPage from '@/pages/EmailSettingsPage';
+import NotificationsPage from '@/pages/NotificationsPage';
 import ProspectusOverview from '@/pages/prospectus/ProspectusOverview';
 import ProspectusListPage from '@/pages/prospectus/ProspectusListPage';
 import ProspectusPage from '@/pages/prospectus/ProspectusPage';
@@ -175,6 +176,7 @@ function App() {
             >
               <Route path="/change-password" element={<ChangePasswordPage />} />
               <Route path="/email-settings" element={<EmailSettingsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
             </Route>
 
             {/* Fallback */}

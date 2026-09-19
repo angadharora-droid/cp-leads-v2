@@ -6,6 +6,7 @@ import { getInitials } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -45,7 +46,7 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
     '/': 'Dashboard', '/leads': 'Leads', '/leads/new': 'New lead', '/enquiries': 'Enquiries',
     '/rate-contracts': 'Rate contracts', '/banquet-calendar': 'Banquet calendar', '/follow-ups': 'Follow-ups',
     '/reports': 'Reports', '/users': 'Team & access', '/audit': 'Audit logs', '/lead-tracker': 'Lead tracker',
-    '/banquet-setup': 'Banquet setup', '/change-password': 'Change password', '/email-settings': 'Email settings',
+    '/banquet-setup': 'Banquet setup', '/change-password': 'Change password', '/email-settings': 'Email settings', '/notifications': 'Notifications',
     '/prospectus': 'FP overview', '/prospectus/list': 'Functions & sheets', '/prospectus/settings': 'FP settings',
     '/estimates': 'Estimate overview', '/estimates/list': 'Sheets & estimates', '/estimates/settings': 'Estimate settings',
   };
@@ -126,6 +127,8 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
             </Button>
           </>
         ) : null}
+
+        <NotificationBell />
 
         <ThemeToggle />
 

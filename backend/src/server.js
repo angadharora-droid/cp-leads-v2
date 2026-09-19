@@ -1,6 +1,7 @@
 import env from './config/env.js';
 import { connectDB } from './config/db.js';
 import app from './app.js';
+import { startFollowUpReminders } from './services/notification.service.js';
 
 async function start() {
   try {
@@ -10,6 +11,9 @@ async function start() {
         `[server] CPH Leads CRM API running at http://localhost:${env.PORT} (${env.NODE_ENV})`
       );
     });
+
+    // Follow-ups falling due today or slipping overdue raise in-app reminders.
+    startFollowUpReminders();
 
     const shutdown = (signal) => {
       console.log(`[server] ${signal} received, shutting down...`);

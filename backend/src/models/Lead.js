@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { attachMovementHooks } from './movementHooks.js';
+
 const { Schema, model } = mongoose;
 
 export const LEAD_STATUSES = ['Non Contracted', 'Contracted'];
@@ -155,6 +157,9 @@ const leadSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// A new lead, or a Contracted / Non Contracted change, notifies the team.
+attachMovementHooks(leadSchema, { entityType: 'Lead', field: 'status' });
 
 const Lead = model('Lead', leadSchema);
 

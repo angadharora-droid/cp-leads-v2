@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { attachMovementHooks } from './movementHooks.js';
+
 const { Schema, model } = mongoose;
 
 /**
@@ -59,6 +61,8 @@ const arcSchema = new Schema(
   },
   { timestamps: true }
 );
+
+attachMovementHooks(arcSchema, { entityType: 'Arc', field: 'stage' });
 
 const Arc = model('Arc', arcSchema);
 

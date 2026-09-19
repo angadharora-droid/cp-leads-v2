@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { attachMovementHooks } from './movementHooks.js';
+
 const { Schema, model } = mongoose;
 
 /**
@@ -419,6 +421,10 @@ const enquirySchema = new Schema(
 );
 
 enquirySchema.index({ 'functions.date': 1 });
+
+// Every stage move, including the waitlist engine's and the client's
+// signature, notifies the team.
+attachMovementHooks(enquirySchema, { entityType: 'Enquiry', field: 'stage' });
 
 const Enquiry = model('Enquiry', enquirySchema);
 
