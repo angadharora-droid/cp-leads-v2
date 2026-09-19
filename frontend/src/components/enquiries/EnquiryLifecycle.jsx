@@ -62,9 +62,10 @@ export default function EnquiryLifecycle({ enquiryId, version, compact = false, 
 
   const summary = data?.summary;
   const summaryNode = summary ? (
-    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
       <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-      {summaryLabel(summary)}
+      <span>{summaryLabel(summary)}</span>
+      {summary.valueLine ? <span>· {summary.valueLine}</span> : null}
     </p>
   ) : null;
 

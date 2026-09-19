@@ -163,6 +163,40 @@ function DocumentRow({ icon: Icon, title, number, generatedAt, sentAt, sentTo, e
 }
 
 /**
+ * The issues of a document that later edits superseded, indented under the
+ * current one. Each is rebuilt from the details it was made from when
+ * previewed or downloaded; no PDF is stored.
+ */
+function EarlierIssues({ issues, document, icon, preview, download, downloading }) {
+  const earlier = (issues || []).map((issue, index) => ({ issue, index })).filter(({ issue }) => issue.document === document);
+  if (!earlier.length) return null;
+  const noun = document === 'contract' ? 'Contract' : 'Proposal';
+  return (
+    <div className="space-y-2 pl-5">
+      {earlier.map(({ issue, index }) => {
+        const key = `issue-${index}`;
+        const name = `${noun} ${issue.number} (superseded).pdf`;
+        return (
+          <DocumentRow
+            key={key}
+            icon={icon}
+            title={`Earlier ${noun.toLowerCase()}`}
+            number={issue.number}
+            generatedAt={issue.generatedAt}
+            sentAt={issue.sentAt}
+            sentTo={issue.sentTo}
+            extra={`Superseded ${formatDate(issue.supersededAt)}${issue.supersededByName ? ` by ${issue.supersededByName}` : ''}`}
+            onPreview={preview(key, `issues/${index}/pdf`, name)}
+            onDownload={download(key, `issues/${index}/pdf`, name)}
+            downloading={downloading === key}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Enquiry page — one enquiry with its own contact, functions and rooms,
  * every document made for it (proposal, contract, signed copy, pro-forma,
  * credit form), the emails sent, the advance or credit that won it and the
@@ -539,6 +573,9 @@ export default function EnquiryPage() {
             </CardContent>
           </Card>
 
+        </div>
+
+        <div className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -559,6 +596,7 @@ export default function EnquiryPage() {
                 onDownload={enquiry.proposal?.number ? download('proposal', 'proposal/pdf', 'Proposal.pdf') : null}
                 downloading={downloading === 'proposal'}
               />
+              <EarlierIssues issues={enquiry.issues} document="proposal" icon={FileText} preview={preview} download={download} downloading={downloading} />
               <DocumentRow
                 icon={FileCheck2}
                 title="Contract"
@@ -570,6 +608,7 @@ export default function EnquiryPage() {
                 onDownload={enquiry.contract?.number ? download('contract', 'contract/pdf', 'Contract.pdf') : null}
                 downloading={downloading === 'contract'}
               />
+              <EarlierIssues issues={enquiry.issues} document="contract" icon={FileCheck2} preview={preview} download={download} downloading={downloading} />
               <DocumentRow
                 icon={FileSignature}
                 title="Signed copy"
@@ -639,9 +678,6 @@ export default function EnquiryPage() {
             </CardContent>
           </Card>
 
-        </div>
-
-        <div className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">

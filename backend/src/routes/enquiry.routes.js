@@ -40,6 +40,9 @@ router.post('/:enquiryId/proposal', enquiryController.generateProposal);
 // Download without advancing the stage.
 router.get('/:enquiryId/proposal/pdf', enquiryController.downloadProposal);
 
+// An earlier issue of the proposal or contract, rebuilt from its saved details.
+router.get('/:enquiryId/issues/:index/pdf', enquiryController.downloadIssue);
+
 // Email the proposal (advances → waitlist).
 router.post(
   '/:enquiryId/proposal/email',

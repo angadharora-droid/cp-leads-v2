@@ -211,6 +211,32 @@ const revisionSchema = new Schema(
     document: { type: String, default: 'enquiry' },
     number: { type: String, default: '' },
     changes: { type: [String], default: [] },
+    // The headline figures either side of the edit, so the life cycle can
+    // show what a stage did to the value and the guest count.
+    paxBefore: { type: Number },
+    paxAfter: { type: Number },
+    valueBefore: { type: Number },
+    valueAfter: { type: Number },
+  },
+  { _id: false }
+);
+
+/**
+ * A superseded issue of the proposal or contract: the printed values it was
+ * built from, kept as data (a few KB) so its PDF can be rebuilt on request
+ * without storing the PDF itself. `print` is loaded only when asked for.
+ */
+const issueSchema = new Schema(
+  {
+    document: { type: String, enum: ['proposal', 'contract'], required: true },
+    number: { type: String, default: '' },
+    revision: { type: Number, default: 0 },
+    generatedAt: { type: Date },
+    sentAt: { type: Date },
+    sentTo: { type: String, default: '' },
+    supersededAt: { type: Date, default: Date.now },
+    supersededByName: { type: String, default: '' },
+    print: { type: Schema.Types.Mixed, select: false },
   },
   { _id: false }
 );
@@ -419,6 +445,9 @@ const enquirySchema = new Schema(
     contract: { type: documentSchema, default: () => ({}) },
     signing: { type: signingSchema, default: () => ({}) },
     proforma: { type: proformaSchema, default: () => ({}) },
+    // The functions and rooms exactly as the enquiry was raised, so the life
+    // cycle can start from the original figures however much was edited since.
+    raised: { type: agreedSchema, default: undefined },
     // What the client last agreed to, and the addendums recording changes since.
     agreed: { type: agreedSchema, default: () => ({}) },
     addendums: { type: [addendumSchema], default: [] },
@@ -427,6 +456,8 @@ const enquirySchema = new Schema(
     addendumDue: { type: Boolean, default: false },
     // Every edit made while a document existed, with the document it reissued.
     revisions: { type: [revisionSchema], default: [] },
+    // Every proposal and contract issue those edits superseded, as data.
+    issues: { type: [issueSchema], default: [] },
     advance: { type: advanceSchema, default: () => ({}) },
     cancellation: { type: cancellationSchema, default: () => ({}) },
     credit: { type: creditSchema, default: () => ({}) },
