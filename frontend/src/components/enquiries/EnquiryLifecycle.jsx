@@ -39,8 +39,9 @@ const EVENT_ICONS = {
  * @param {string} props.enquiryId
  * @param {string|number} [props.version] changes whenever the enquiry does, to reload
  * @param {boolean} [props.compact] the card sits in a narrow column: facts stack in one column
+ * @param {boolean} [props.bare] no card around it (it sits inside a panel that has its own title)
  */
-export default function EnquiryLifecycle({ enquiryId, version, compact = false }) {
+export default function EnquiryLifecycle({ enquiryId, version, compact = false, bare = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
@@ -60,24 +61,15 @@ export default function EnquiryLifecycle({ enquiryId, version, compact = false }
   }, [enquiryId, version]);
 
   const summary = data?.summary;
+  const summaryNode = summary ? (
+    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+      {summaryLabel(summary)}
+    </p>
+  ) : null;
 
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Route className="h-4 w-4 text-primary" />
-            Life cycle
-          </CardTitle>
-          {summary ? (
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-              {summaryLabel(summary)}
-            </p>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
+  const body = (
+    <>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : !data ? (
@@ -162,7 +154,30 @@ export default function EnquiryLifecycle({ enquiryId, version, compact = false }
             })}
           </ol>
         )}
-      </CardContent>
+    </>
+  );
+
+  if (bare) {
+    return (
+      <div className="space-y-4">
+        {summaryNode}
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Route className="h-4 w-4 text-primary" />
+            Life cycle
+          </CardTitle>
+          {summaryNode}
+        </div>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }
