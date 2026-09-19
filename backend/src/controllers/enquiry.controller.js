@@ -29,8 +29,8 @@ export const lifecycle = asyncHandler(async (req, res) => {
 });
 
 export const update = asyncHandler(async (req, res) => {
-  const enquiry = await enquiryService.updateEnquiry(req.params.enquiryId, req.body, req.user, req);
-  return sendOk(res, { enquiry });
+  const { enquiry, revision } = await enquiryService.updateEnquiry(req.params.enquiryId, req.body, req.user, req);
+  return sendOk(res, { enquiry, revision });
 });
 
 export const remove = asyncHandler(async (req, res) => {

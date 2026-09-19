@@ -135,3 +135,10 @@ export const ADVANCE_MODES = [
 export function advanceModeLabel(key) {
   return ADVANCE_MODES.find((m) => m.key === key)?.label || key || '';
 }
+
+/** The edit button's name follows the document the client holds. */
+export function editLabelFor(enquiry) {
+  if (enquiry?.contract?.number) return 'Edit contract';
+  if (enquiry?.proposal?.number) return 'Edit proposal';
+  return 'Edit enquiry';
+}

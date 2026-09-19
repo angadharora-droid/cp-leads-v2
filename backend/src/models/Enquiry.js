@@ -185,10 +185,32 @@ const documentSchema = new Schema(
   {
     // Document reference printed in the header, e.g. HCP.EP.000012.00
     number: { type: String, default: '' },
+    // How many times it was reissued after an edit (the proposal's ".01" suffix).
+    revision: { type: Number, default: 0 },
     generatedAt: { type: Date },
     sentAt: { type: Date },
     sentTo: { type: String, default: '' },
     from: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+/**
+ * One edit made while a document existed: which document it reissued (or
+ * refreshed), the number it now carries, and what changed, line by line, so
+ * the life cycle can show it.
+ */
+const revisionSchema = new Schema(
+  {
+    at: { type: Date, default: Date.now },
+    by: { type: Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String },
+    // The stage the enquiry was at, so the life cycle lists it in that block.
+    stage: { type: String, enum: ENQUIRY_STAGES, required: true },
+    // enquiry | proposal | contract | addendum
+    document: { type: String, default: 'enquiry' },
+    number: { type: String, default: '' },
+    changes: { type: [String], default: [] },
   },
   { _id: false }
 );
@@ -403,6 +425,8 @@ const enquirySchema = new Schema(
     // Set when the details change after the contract went out; cleared once
     // an addendum recording the change is emailed.
     addendumDue: { type: Boolean, default: false },
+    // Every edit made while a document existed, with the document it reissued.
+    revisions: { type: [revisionSchema], default: [] },
     advance: { type: advanceSchema, default: () => ({}) },
     cancellation: { type: cancellationSchema, default: () => ({}) },
     credit: { type: creditSchema, default: () => ({}) },

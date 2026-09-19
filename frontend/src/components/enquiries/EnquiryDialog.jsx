@@ -152,6 +152,14 @@ function activeOnly(list) {
   return (list || []).filter((item) => item.active !== false);
 }
 
+/** What the save did to the client's document, for the toast. */
+function revisionToast(revision) {
+  if (!revision || revision.document === 'enquiry') return 'Enquiry updated';
+  if (revision.document === 'proposal') return `Proposal revised to ${revision.number} — email it again`;
+  if (revision.document === 'contract') return 'Contract and pro-forma refreshed';
+  return `Addendum ${revision.number} ready to email`;
+}
+
 /** Section header inside the dialog: icon, title, one-liner, optional action. */
 function SectionHeading({ icon: Icon, title, description, action }) {
   return (
@@ -987,8 +995,18 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
  * @param {boolean} [props.readOnly] the enquiry is won, lost or cancelled:
  *   everything shows, nothing can be changed or saved
  */
-function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onLeadUpdated, focusFunction = null, readOnly = false }) {
+function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onLeadUpdated, focusFunction = null, readOnly = false, title = '' }) {
   const isEdit = Boolean(enquiry?._id);
+  // What saving does once a document exists, said before the exec edits.
+  const saveNote = !isEdit || readOnly
+    ? ''
+    : enquiry?.contract?.sentAt
+      ? 'Saving records the change in an addendum with a revised pro-forma, ready to email.'
+      : enquiry?.contract?.number
+        ? 'Saving refreshes the contract and pro-forma under the same numbers.'
+        : enquiry?.proposal?.number
+          ? `Saving issues the next revision of proposal ${enquiry.proposal.number}; email it to the client again.`
+          : '';
   const needsDepartment = !isIndividual(lead);
   const [isSaving, setIsSaving] = useState(false);
   const [conflicts, setConflicts] = useState({});
@@ -1291,7 +1309,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
       const res = isEdit
         ? await api.patch(`/enquiries/${enquiry._id}`, payload)
         : await api.post(`/leads/${lead._id}/enquiries`, payload);
-      toast.success(isEdit ? 'Enquiry updated' : 'Enquiry created');
+      toast.success(isEdit ? revisionToast(res?.data?.data?.revision) : 'Enquiry created');
       onSaved?.(res?.data?.data?.enquiry);
       onOpenChange(false);
     } catch (err) {
@@ -1315,11 +1333,10 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
           Esc, the X and Cancel still close it. */}
       <SidePanelContent onPointerDownOutside={(e) => e.preventDefault()}>
         <SidePanelHeader>
-          <SidePanelTitle>{readOnly ? 'Enquiry details' : isEdit ? 'Edit enquiry' : 'New enquiry'}</SidePanelTitle>
+          <SidePanelTitle>{readOnly ? 'Enquiry details' : isEdit ? title || 'Edit enquiry' : 'New enquiry'}</SidePanelTitle>
           <SidePanelDescription>
-            Each function holds its venue, any add-on rooms and its sessions on the banquet calendar.
-            The rack rate is worked out from the menu, add-ons and guest count; the rates you offer
-            form the proposed rate.
+            {saveNote ||
+              'Each function holds its venue, any add-on rooms and its sessions on the banquet calendar. The rack rate is worked out from the menu, add-ons and guest count; the rates you offer form the proposed rate.'}
           </SidePanelDescription>
         </SidePanelHeader>
 
