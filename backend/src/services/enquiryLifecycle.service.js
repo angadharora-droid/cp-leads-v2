@@ -105,26 +105,48 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
 
   // Edits made while a document existed, listed in the stage they happened in.
   const revisions = [...(enquiry.revisions || [])].sort((a, b) => new Date(a.at) - new Date(b.at));
-  const revisionText = (r) => {
-    const head =
-      r.document === 'proposal'
-        ? `Proposal revised to ${r.number}`
-        : r.document === 'contract'
-          ? `Contract ${r.number} and pro-forma refreshed`
-          : r.document === 'addendum'
-            ? `Addendum ${r.number} prepared`
-            : 'Details changed';
-    const what = (r.changes || []).join('; ');
-    return what ? `${head} — ${what}` : head;
-  };
+  const revisionHead = (r) =>
+    r.document === 'proposal'
+      ? `Proposal revised to ${r.number}`
+      : r.document === 'contract'
+        ? `Contract ${r.number} and pro-forma refreshed`
+        : r.document === 'addendum'
+          ? `Addendum ${r.number} prepared`
+          : 'Details changed';
 
-  const events = (stage) => [
-    ...history.filter((h) => h.stage === stage && h.trigger).map((h) => ({ at: h.at, text: h.trigger, byName: h.byName || '' })),
-    ...emails
-      .filter((m) => EMAIL_STAGE[m.kind] === stage)
-      .map((m) => ({ at: m.at, text: `${EMAIL_LABELS[m.kind] || 'Email sent'}${m.to ? ` to ${m.to}` : ''}`, byName: m.byName || '' })),
-    ...revisions.filter((r) => r.stage === stage).map((r) => ({ at: r.at, text: revisionText(r), byName: r.byName || '' })),
-  ].sort((a, b) => new Date(a.at) - new Date(b.at));
+  // The client's signatures, on the contract (or proposal) and on each addendum.
+  const signatures = [];
+  if (enquiry.signing?.signedAt) {
+    const doc = enquiry.signing.document === 'proposal' ? 'Proposal' : 'Contract';
+    const number = enquiry.signing.document === 'proposal' ? enquiry.proposal?.number : enquiry.contract?.number;
+    signatures.push({
+      stage: enquiry.signing.document === 'proposal' ? 'proposal' : 'provisional',
+      at: enquiry.signing.signedAt,
+      text: `${doc} ${number || ''} signed by ${signatureLine(enquiry.signing)}`.replace('  ', ' '),
+    });
+  }
+  for (const a of enquiry.addendums || []) {
+    if (a.signing?.signedAt) {
+      signatures.push({ stage: 'provisional', at: a.signing.signedAt, text: `Addendum ${a.number} signed by ${signatureLine(a.signing)}` });
+    }
+  }
+
+  // Everything that happened inside a stage, in hotel time. The moment the
+  // stage was entered is the block's header, so the first history entry of a
+  // stage is not repeated here; later entries (a slot freed, a return from
+  // the waitlist) are.
+  const event = (kind, at, text, byName = '', details = []) => ({ kind, at, atLabel: when(at), text, byName: byName || '', details });
+  const events = (stage) => {
+    const entries = history.filter((h) => h.stage === stage);
+    return [
+      ...entries.slice(1).filter((h) => h.trigger).map((h) => event('stage', h.at, h.trigger, h.byName)),
+      ...emails
+        .filter((m) => EMAIL_STAGE[m.kind] === stage)
+        .map((m) => event('email', m.at, `${EMAIL_LABELS[m.kind] || 'Email sent'}${m.to ? ` to ${m.to}` : ''}`, m.byName)),
+      ...revisions.filter((r) => r.stage === stage).map((r) => event('revision', r.at, revisionHead(r), r.byName, r.changes || [])),
+      ...signatures.filter((s) => s.stage === stage).map((s) => event('signature', s.at, s.text)),
+    ].sort((a, b) => new Date(a.at) - new Date(b.at));
+  };
 
   const blocks = [];
   const push = (stage, { at, byName, details }) => {
@@ -135,6 +157,7 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       stage,
       label: STAGE_LABELS[stage],
       at: enteredAt,
+      atLabel: when(enteredAt),
       byName: byName || firstEntry(stage)?.byName || '',
       current,
       // Days spent here: until it moved on, or until today while it is still here.
@@ -144,10 +167,13 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
     });
   };
 
+  // When it was raised: the first history entry, else the record's own stamp.
+  const raisedAt = firstEntry('enquiry')?.at || enquiry.createdAt;
+
   // 1. Enquiry — always.
   push('enquiry', {
-    at: enquiry.createdAt,
-    byName: enquiry.createdByName,
+    at: raisedAt,
+    byName: firstEntry('enquiry')?.byName || enquiry.createdByName,
     details: [
       ['Lead', [lead.businessName, lead.reference].filter(Boolean).join(' · ')],
       ['Department', departmentLabel(lead, enquiry.department)],
@@ -199,14 +225,9 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
 
   // 4. Provisional — the contract went out.
   if (enquiry.contract?.number || firstEntry('provisional')) {
+    // One line per addendum; the emails and signatures themselves are events.
     const addendums = (enquiry.addendums || []).map((a) =>
-      [
-        a.number,
-        a.sentAt ? `sent ${when(a.sentAt)}` : 'not sent yet',
-        a.signing?.signedAt ? `signed by ${signatureLine(a.signing)} on ${when(a.signing.signedAt)}` : '',
-      ]
-        .filter(Boolean)
-        .join(', ')
+      `${a.number} — ${a.signing?.signedAt ? 'signed' : a.sentAt ? 'sent, awaiting signature' : 'not sent yet'}`
     );
     push('provisional', {
       at: firstEntry('provisional')?.at || enquiry.contract?.sentAt || enquiry.contract?.generatedAt,
@@ -233,7 +254,7 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       at: enquiry.won?.at || firstEntry('won')?.at,
       byName: enquiry.won?.byName,
       details: [
-        ['Confirmed on', onCredit ? 'One-time credit (PPS)' : advance.received ? 'Advance received' : ''],
+        ['Confirmed by', onCredit ? 'One-time credit (PPS)' : advance.received ? 'Advance received' : ''],
         ['Advance amount', advance.received ? rupees(advance.amount) || advance.amount : ''],
         ['Advance date', advance.received ? when(advance.date, { time: false }) : ''],
         ['Payment mode', advance.received ? MODE_LABELS[advance.mode] || '' : ''],
@@ -279,7 +300,12 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
     });
   }
 
-  blocks.sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
+  // In the order the stages were reached; the enquiry itself always opens the story.
+  blocks.sort((a, b) => {
+    if (a.stage === 'enquiry') return -1;
+    if (b.stage === 'enquiry') return 1;
+    return new Date(a.at || 0) - new Date(b.at || 0);
+  });
 
   const closedAt =
     enquiry.stage === 'won' ? enquiry.won?.at : enquiry.stage === 'lost' ? enquiry.lostAt : enquiry.stage === 'cancelled' ? enquiry.cancellation?.at : null;
@@ -288,10 +314,10 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
     summary: {
       stage: enquiry.stage,
       stageLabel: STAGE_LABELS[enquiry.stage] || enquiry.stage,
-      createdAt: enquiry.createdAt,
+      createdAt: raisedAt,
       closedAt: closedAt || null,
       // From the day it was raised to the day it closed, or to today while it is open.
-      totalDays: daysBetween(enquiry.createdAt, closedAt || now),
+      totalDays: daysBetween(raisedAt, closedAt || now),
       open: !closedAt,
       value,
     },
