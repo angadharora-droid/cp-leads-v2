@@ -112,12 +112,14 @@ const TABLE_LAYOUT = {
   hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0.8 : 0.5),
   vLineWidth: () => 0,
   hLineColor: (i) => (i === 0 ? SHEET.maroon : SHEET.line),
-  paddingLeft: () => 6,
-  paddingRight: () => 6,
+  paddingLeft: () => 5,
+  paddingRight: () => 5,
   paddingTop: () => 4,
   paddingBottom: () => 4,
 };
 
+// pdfmake adds each cell's padding on top of the column width, so the fixed
+// widths below are content widths; the starred column takes what is left.
 function dataTable(widths, body, { margin = [0, 0, 0, 0] } = {}) {
   return { table: { widths, body, headerRows: 1, dontBreakRows: true, keepWithHeaderRows: 1 }, layout: TABLE_LAYOUT, margin };
 }
@@ -321,7 +323,7 @@ function eventMealTable(enquiry) {
   if (!rows.length) rows.push(headers.map(() => cell('')));
   return [
     sectionTitle('Event and Meal Details', { margin: [0, 14, 0, 6] }),
-    dataTable([78, 58, 78, 62, '*', 50, 66], [headers.map((h, i) => head(h, [3, 5, 6].includes(i) ? 'right' : 'left')), ...rows]),
+    dataTable([78, 52, 66, 54, '*', 46, 58], [headers.map((h, i) => head(h, [3, 5, 6].includes(i) ? 'right' : 'left')), ...rows]),
   ];
 }
 
