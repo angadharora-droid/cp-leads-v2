@@ -11,7 +11,7 @@ function escapeRegex(value) {
  */
 function buildLeadMatch(currentUser, filters = {}) {
   const match = {};
-  if (currentUser.role !== 'admin') {
+  if (!['admin', 'manager'].includes(currentUser.role)) {
     match.assignedTo = currentUser.id;
   }
   if (filters.status) {

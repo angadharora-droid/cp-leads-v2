@@ -2,23 +2,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ScrollText,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw,
   Filter,
+  ShieldAlert,
+  CheckCircle2,
+  Circle,
+  User,
 } from 'lucide-react';
 
 import api, { getErrorMessage } from '@/lib/api';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatRelative } from '@/lib/format';
 
 import PageHeader from '@/components/PageHeader';
 import EmptyState from '@/components/EmptyState';
+import Pagination from '@/components/Pagination';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -35,6 +37,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 25;
 
@@ -97,6 +100,122 @@ function actionVariant(action) {
   return 'secondary';
 }
 
+/**
+ * Action badge: tinted pill with an icon and readable label (colour is never
+ * the only signal) plus the raw action key as a small muted mono chip.
+ */
+const ACTION_STYLES = {
+  destructive: {
+    icon: ShieldAlert,
+    className: 'border-destructive/25 bg-destructive/10 text-destructive',
+  },
+  default: {
+    icon: CheckCircle2,
+    className: 'border-success/25 bg-success/10 text-success',
+  },
+  secondary: {
+    icon: Circle,
+    className: 'border-border bg-muted text-foreground',
+  },
+};
+
+function ActionBadge({ action, entityType }) {
+  const style = ACTION_STYLES[actionVariant(action)];
+  const Icon = style.icon;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
+          style.className
+        )}
+      >
+        <Icon className="h-3 w-3" aria-hidden="true" />
+        {prettifyAction(action)}
+      </span>
+      <span className="flex flex-wrap items-center gap-1">
+        {action ? (
+          <code className="rounded border bg-muted px-1 py-px font-mono text-[10px] leading-4 text-muted-foreground">
+            {action}
+          </code>
+        ) : null}
+        {entityType ? (
+          <span className="text-[11px] text-muted-foreground">{entityType}</span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/** Relative time, with the exact timestamp as a tooltip and beneath. */
+function TimeCell({ value }) {
+  const absolute = formatDateTime(value);
+  const parsed = value ? new Date(value) : null;
+  const iso = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : undefined;
+  return (
+    <time dateTime={iso} title={absolute} className="flex flex-col">
+      <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground">
+        {formatRelative(value)}
+      </span>
+      <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+        {absolute}
+      </span>
+    </time>
+  );
+}
+
+function getActor(log) {
+  const actorName = log.actor?.name || log.actorEmail || 'System';
+  const actorEmail =
+    log.actor?.email ||
+    (log.actorEmail && log.actorEmail !== actorName ? log.actorEmail : '');
+  return { actorName, actorEmail };
+}
+
+/** Skeleton mirroring the table (desktop) and the card list (mobile). */
+function LogsSkeleton({ rows = 8 }) {
+  return (
+    <div aria-busy="true" aria-label="Loading audit logs">
+      <div className="hidden md:block">
+        <div className="flex items-center gap-4 border-b bg-muted/40 px-4 py-3">
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 flex-1" />
+        </div>
+        <div className="divide-y">
+          {Array.from({ length: rows }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 px-4 py-3">
+              <div className="w-44 space-y-1.5">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 w-36" />
+              </div>
+              <div className="w-56 space-y-1.5">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+              <div className="w-44 space-y-1.5">
+                <Skeleton className="h-5 w-28 rounded-full" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-4 flex-1" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-3 p-4 md:hidden">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="space-y-2 rounded-lg border p-4">
+            <Skeleton className="h-5 w-32 rounded-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AuditLogsPage() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -144,10 +263,6 @@ export default function AuditLogsPage() {
     setPage(1);
   }, [actionFilter, entityFilter, actorFilter, fromDate, toDate]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, total);
-
   const hasActiveFilters = useMemo(
     () =>
       actionFilter !== 'all' ||
@@ -169,115 +284,129 @@ export default function AuditLogsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Audit Logs"
+        eyebrow="Admin"
+        title="Audit logs"
         description="A newest-first record of every significant action across the system."
       />
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="audit-action" className="text-xs text-muted-foreground">
-              Action
-            </Label>
-            <Select value={actionFilter} onValueChange={setActionFilter}>
-              <SelectTrigger id="audit-action">
-                <SelectValue placeholder="All actions" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="all">All actions</SelectItem>
-                {ACTION_OPTIONS.map((a) => (
-                  <SelectItem key={a} value={a}>
-                    {prettifyAction(a)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4 sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+            <div className="space-y-3">
+              <p className="eyebrow">Filters</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="audit-action">Action</Label>
+                  <Select value={actionFilter} onValueChange={setActionFilter}>
+                    <SelectTrigger id="audit-action">
+                      <SelectValue placeholder="All actions" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="all">All actions</SelectItem>
+                      {ACTION_OPTIONS.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {prettifyAction(a)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="audit-entity">Entity</Label>
+                  <Select value={entityFilter} onValueChange={setEntityFilter}>
+                    <SelectTrigger id="audit-entity">
+                      <SelectValue placeholder="All entities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All entities</SelectItem>
+                      {ENTITY_OPTIONS.map((e) => (
+                        <SelectItem key={e} value={e}>
+                          {e}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="audit-actor">Actor (email)</Label>
+                  <div className="relative">
+                    <User
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      id="audit-actor"
+                      className="pl-8"
+                      value={actorFilter}
+                      onChange={(e) => setActorFilter(e.target.value)}
+                      placeholder="e.g. admin@cph.local"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 lg:border-l lg:pl-4">
+              <p className="eyebrow">Date range</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-[150px_150px]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="audit-from">From</Label>
+                  <Input
+                    id="audit-from"
+                    type="date"
+                    value={fromDate}
+                    max={toDate || undefined}
+                    onChange={(e) => setFromDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="audit-to">To</Label>
+                  <Input
+                    id="audit-to"
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(e) => setToDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="audit-entity" className="text-xs text-muted-foreground">
-              Entity
-            </Label>
-            <Select value={entityFilter} onValueChange={setEntityFilter}>
-              <SelectTrigger id="audit-entity">
-                <SelectValue placeholder="All entities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All entities</SelectItem>
-                {ENTITY_OPTIONS.map((e) => (
-                  <SelectItem key={e} value={e}>
-                    {e}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3">
+            <p
+              className={cn(
+                'flex items-center gap-1.5 text-xs',
+                hasActiveFilters ? 'font-medium text-primary' : 'text-muted-foreground'
+              )}
+              role="status"
+            >
+              <Filter className="h-3.5 w-3.5" aria-hidden="true" />
+              {hasActiveFilters ? 'Filters applied' : 'No filters applied'}
+            </p>
+            <Button
+              variant="ghost"
+              size="default"
+              onClick={resetFilters}
+              disabled={!hasActiveFilters}
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Reset
+            </Button>
           </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="audit-actor" className="text-xs text-muted-foreground">
-              Actor (email)
-            </Label>
-            <Input
-              id="audit-actor"
-              value={actorFilter}
-              onChange={(e) => setActorFilter(e.target.value)}
-              placeholder="e.g. admin@cph.local"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="audit-from" className="text-xs text-muted-foreground">
-              From
-            </Label>
-            <Input
-              id="audit-from"
-              type="date"
-              value={fromDate}
-              max={toDate || undefined}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="audit-to" className="text-xs text-muted-foreground">
-              To
-            </Label>
-            <Input
-              id="audit-to"
-              type="date"
-              value={toDate}
-              min={fromDate || undefined}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Filter className="h-3.5 w-3.5" />
-            {hasActiveFilters ? 'Filters applied' : 'No filters applied'}
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={resetFilters}
-            disabled={!hasActiveFilters}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Reset
-          </Button>
-        </div>
+        </CardContent>
       </Card>
 
-      <Card>
+      {/* Results */}
+      <Card className="overflow-hidden">
         {isLoading ? (
-          <div className="space-y-3 p-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
+          <LogsSkeleton rows={8} />
         ) : items.length === 0 ? (
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <EmptyState
               icon={ScrollText}
               title="No audit entries"
@@ -289,7 +418,7 @@ export default function AuditLogsPage() {
               action={
                 hasActiveFilters ? (
                   <Button variant="outline" onClick={resetFilters}>
-                    <RotateCcw className="h-4 w-4" />
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
                     Clear filters
                   </Button>
                 ) : null
@@ -297,93 +426,80 @@ export default function AuditLogsPage() {
             />
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-52">Time</TableHead>
-                <TableHead className="w-64">Actor</TableHead>
-                <TableHead className="w-48">Action</TableHead>
-                <TableHead>Summary</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Mobile: stacked cards */}
+            <ul className="divide-y md:hidden">
               {items.map((log) => {
-                const actorName =
-                  log.actor?.name || log.actorEmail || 'System';
-                const actorEmail =
-                  log.actor?.email ||
-                  (log.actorEmail && log.actorEmail !== actorName
-                    ? log.actorEmail
-                    : '');
+                const { actorName, actorEmail } = getActor(log);
                 return (
-                  <TableRow key={log._id}>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatDateTime(log.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-foreground">
-                          {actorName}
-                        </span>
-                        {actorEmail ? (
-                          <span className="text-xs text-muted-foreground">
-                            {actorEmail}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Badge variant={actionVariant(log.action)} className="w-fit">
-                          {prettifyAction(log.action)}
-                        </Badge>
-                        {log.entityType ? (
-                          <span className="text-xs text-muted-foreground">
-                            {log.entityType}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-foreground">
-                      {log.summary || '—'}
-                    </TableCell>
-                  </TableRow>
+                  <li key={log._id} className="space-y-2 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <ActionBadge action={log.action} entityType={log.entityType} />
+                      <TimeCell value={log.createdAt} />
+                    </div>
+                    <p className="text-sm text-foreground">{log.summary || '—'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{actorName}</span>
+                      {actorEmail ? ` · ${actorEmail}` : ''}
+                    </p>
+                  </li>
                 );
               })}
-            </TableBody>
-          </Table>
+            </ul>
+
+            {/* Desktop: dense table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-48">Time</TableHead>
+                    <TableHead className="w-56">Actor</TableHead>
+                    <TableHead className="w-48">Action</TableHead>
+                    <TableHead>Summary</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((log) => {
+                    const { actorName, actorEmail } = getActor(log);
+                    return (
+                      <TableRow key={log._id}>
+                        <TableCell className="py-2.5 align-top">
+                          <TimeCell value={log.createdAt} />
+                        </TableCell>
+                        <TableCell className="py-2.5 align-top">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">{actorName}</span>
+                            {actorEmail ? (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {actorEmail}
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-2.5 align-top">
+                          <ActionBadge action={log.action} entityType={log.entityType} />
+                        </TableCell>
+                        <TableCell className="py-2.5 align-top text-sm text-foreground">
+                          {log.summary || '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </Card>
 
       {!isLoading && total > 0 ? (
-        <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-          <p className="text-xs text-muted-foreground">
-            Showing {rangeStart}–{rangeEnd} of {total}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          limit={PAGE_SIZE}
+          total={total}
+          onPageChange={setPage}
+          noun="entries"
+        />
       ) : null}
     </div>
   );

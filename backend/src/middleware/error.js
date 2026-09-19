@@ -19,6 +19,10 @@ export function errorHandler(err, req, res, _next) {
     const field = Object.keys(err.keyValue || {})[0] || 'field';
     message = `Duplicate value for ${field}`;
     details = err.keyValue;
+  } else if (err.name === 'VersionError') {
+    statusCode = 409;
+    code = 'RECORD_CHANGED';
+    message = 'This record changed while you were working. Reload it and try again.';
   } else if (err.name === 'ValidationError') {
     statusCode = 422;
     code = 'VALIDATION_ERROR';

@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   CalendarClock,
   ClipboardList,
-  ExternalLink,
+  ChevronRight,
   AlertTriangle,
+  Clock,
+  CalendarDays,
+  CalendarX2,
   RefreshCw,
 } from 'lucide-react';
 import {
@@ -28,15 +31,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import Spinner from '@/components/ui/spinner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -71,25 +65,107 @@ function classifyDue(value) {
   };
 }
 
-const TONE_PILL = {
-  overdue: 'bg-[hsl(var(--status-lost)/0.12)] text-[hsl(var(--status-lost))] border-[hsl(var(--status-lost)/0.25)]',
-  today: 'bg-[hsl(var(--status-proposal)/0.14)] text-[hsl(var(--status-proposal))] border-[hsl(var(--status-proposal)/0.3)]',
-  upcoming: 'bg-muted text-muted-foreground border-border',
-  none: 'bg-muted text-muted-foreground border-border',
-};
+/**
+ * Bucket presentation: semantic colour + icon + text label, so meaning is
+ * never carried by colour alone. Order here is the on-page order.
+ */
+const BUCKETS = [
+  {
+    key: 'overdue',
+    label: 'Overdue',
+    icon: AlertTriangle,
+    description: 'Past their due date — action these first.',
+    text: 'text-destructive',
+    tint: 'bg-destructive/10',
+    border: 'border-destructive/25',
+    accent: 'bg-destructive',
+    rowHover: 'hover:bg-destructive/5',
+  },
+  {
+    key: 'today',
+    label: 'Due today',
+    icon: Clock,
+    description: 'Scheduled for today.',
+    text: 'text-warning',
+    tint: 'bg-warning/10',
+    border: 'border-warning/25',
+    accent: 'bg-warning',
+    rowHover: 'hover:bg-warning/5',
+  },
+  {
+    key: 'upcoming',
+    label: 'Upcoming',
+    icon: CalendarDays,
+    description: 'Coming up later, soonest first.',
+    text: 'text-info',
+    tint: 'bg-info/10',
+    border: 'border-info/25',
+    accent: 'bg-info',
+    rowHover: 'hover:bg-muted/50',
+  },
+  {
+    key: 'none',
+    label: 'No due date',
+    icon: CalendarX2,
+    description: 'Open follow-ups without a scheduled date.',
+    text: 'text-muted-foreground',
+    tint: 'bg-muted',
+    border: 'border-border',
+    accent: 'bg-muted-foreground',
+    rowHover: 'hover:bg-muted/50',
+  },
+];
 
-function DuePill({ value }) {
+const BUCKET_BY_KEY = Object.fromEntries(BUCKETS.map((b) => [b.key, b]));
+
+/** Small status pill: icon + text label, tinted with the bucket colour. */
+function DuePill({ value, className }) {
   const { tone, label } = classifyDue(value);
+  const bucket = BUCKET_BY_KEY[tone];
+  const Icon = bucket.icon;
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium',
-        TONE_PILL[tone]
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
+        bucket.tint,
+        bucket.text,
+        bucket.border,
+        className
       )}
     >
-      {tone === 'overdue' ? <AlertTriangle className="h-3 w-3" /> : null}
+      <Icon className="h-3 w-3" aria-hidden="true" />
       {label}
     </span>
+  );
+}
+
+/** Stat tile summarising one bucket (icon, label, tabular count). */
+function BucketStat({ bucket, count, loading }) {
+  const Icon = bucket.icon;
+  return (
+    <Card className={cn('border', count > 0 && bucket.key !== 'none' && bucket.border)}>
+      <CardContent className="flex items-center gap-3 p-4">
+        <div
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+            bucket.tint,
+            bucket.text
+          )}
+        >
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          {loading ? (
+            <Skeleton className="h-7 w-10" />
+          ) : (
+            <p className="text-2xl font-semibold leading-tight tabular-nums text-foreground">
+              {count}
+            </p>
+          )}
+          <p className="truncate text-xs text-muted-foreground">{bucket.label}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -101,17 +177,18 @@ function ViewPill({ icon: Icon, label, count, active, onClick, alert }) {
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+        'inline-flex min-h-[2.5rem] cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         active
           ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-border bg-card text-muted-foreground hover:bg-muted'
+          : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted hover:text-foreground'
       )}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-4 w-4" aria-hidden="true" />
       {label}
       <span
         className={cn(
-          'rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none',
+          'rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums',
           active
             ? 'bg-primary-foreground/20 text-primary-foreground'
             : 'bg-muted text-muted-foreground'
@@ -122,13 +199,13 @@ function ViewPill({ icon: Icon, label, count, active, onClick, alert }) {
       {alert ? (
         <span
           className={cn(
-            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none',
+            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums',
             active
               ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'bg-[hsl(var(--status-lost)/0.12)] text-[hsl(var(--status-lost))]'
+              : 'bg-destructive/10 text-destructive'
           )}
         >
-          <AlertTriangle className="h-3 w-3" />
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
           {alert}
         </span>
       ) : null}
@@ -136,14 +213,169 @@ function ViewPill({ icon: Icon, label, count, active, onClick, alert }) {
   );
 }
 
-function SectionSkeleton({ rows = 3 }) {
+/** One follow-up row — the whole row links to its lead. */
+function FollowUpRow({ item, bucket }) {
   return (
-    <div className="space-y-3 p-6 pt-0">
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-4 flex-1" />
-          <Skeleton className="h-4 w-24" />
+    <li>
+      <Link
+        to={`/leads/${item.leadId}`}
+        className={cn(
+          'group flex min-h-[3.5rem] cursor-pointer items-start gap-3 px-4 py-3 transition-colors duration-150 sm:items-center sm:px-6',
+          'focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          bucket.rowHover
+        )}
+        aria-label={`Open lead ${item.businessName || 'Untitled lead'}`}
+      >
+        <span
+          className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full sm:mt-0', bucket.accent)}
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="truncate font-medium text-foreground group-hover:text-primary">
+              {item.businessName || 'Untitled lead'}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {item.reference}
+              {item.city ? ` · ${item.city}` : ''}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {item.note || <span className="italic">No note</span>}
+          </p>
+          <div className="sm:hidden">
+            <DuePill value={item.dueDate} />
+          </div>
+        </div>
+        <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+          <DuePill value={item.dueDate} />
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatDate(item.dueDate)} · {formatRelative(item.dueDate)}
+          </span>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1 sm:hidden">
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatDate(item.dueDate)}
+          </span>
+        </div>
+        <ChevronRight
+          className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/60 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-primary sm:mt-0"
+          aria-hidden="true"
+        />
+      </Link>
+    </li>
+  );
+}
+
+/** A grouped section: tinted header with icon, label and count, then rows. */
+function BucketSection({ bucket, items }) {
+  const Icon = bucket.icon;
+  return (
+    <section aria-labelledby={`bucket-${bucket.key}`}>
+      <div
+        className={cn(
+          'flex items-center gap-2 border-y px-4 py-2 sm:px-6',
+          bucket.tint
+        )}
+      >
+        <Icon className={cn('h-4 w-4', bucket.text)} aria-hidden="true" />
+        <h3
+          id={`bucket-${bucket.key}`}
+          className={cn('text-sm font-semibold', bucket.text)}
+        >
+          {bucket.label}
+        </h3>
+        <span
+          className={cn(
+            'rounded-full border bg-card px-2 py-0.5 text-[11px] font-semibold tabular-nums',
+            bucket.text,
+            bucket.border
+          )}
+        >
+          {items.length}
+        </span>
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          {bucket.description}
+        </span>
+      </div>
+      <ul className="divide-y">
+        {items.map((fu) => (
+          <FollowUpRow
+            key={`${fu.leadId}-${fu.followUpId ?? fu.dueDate ?? Math.random()}`}
+            item={fu}
+            bucket={bucket}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** One instruction row — links to its lead. */
+function InstructionRow({ item }) {
+  return (
+    <li>
+      <Link
+        to={`/leads/${item.leadId}`}
+        className={cn(
+          'group flex min-h-[3.5rem] cursor-pointer items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-muted/50 sm:items-center sm:px-6',
+          'focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
+        )}
+        aria-label={`Open lead ${item.businessName || 'Untitled lead'}`}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <ClipboardList className="h-4 w-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-sm text-foreground">{item.text}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground group-hover:text-primary">
+              {item.businessName || 'Untitled lead'}
+            </span>
+            <span>{item.reference}</span>
+          </div>
+        </div>
+        <div className="hidden shrink-0 flex-col items-end sm:flex">
+          <span className="text-sm font-medium tabular-nums text-foreground">
+            {formatDate(item.issuedAt)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Issued {formatRelative(item.issuedAt)}
+          </span>
+        </div>
+        <ChevronRight
+          className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/60 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-primary sm:mt-0"
+          aria-hidden="true"
+        />
+      </Link>
+    </li>
+  );
+}
+
+/** Skeleton that mirrors a bucket header followed by a few rows. */
+function ListSkeleton({ groups = 2, rows = 3 }) {
+  return (
+    <div aria-busy="true" aria-label="Loading">
+      {Array.from({ length: groups }).map((_, g) => (
+        <div key={g}>
+          <div className="flex items-center gap-2 border-y bg-muted/40 px-4 py-2.5 sm:px-6">
+            <Skeleton className="h-4 w-4 rounded-full" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-8 rounded-full" />
+          </div>
+          <div className="divide-y">
+            {Array.from({ length: rows }).map((__, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 sm:px-6">
+                <Skeleton className="h-2 w-2 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+                <Skeleton className="hidden h-5 w-24 rounded-full sm:block" />
+                <Skeleton className="h-4 w-4" />
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -181,14 +413,18 @@ export default function FollowUpsPage() {
     load();
   }, [load]);
 
-  const overdueCount = useMemo(
-    () => followUps.filter((f) => classifyDue(f.dueDate).tone === 'overdue').length,
-    [followUps]
-  );
-  const todayCount = useMemo(
-    () => followUps.filter((f) => classifyDue(f.dueDate).tone === 'today').length,
-    [followUps]
-  );
+  // Group follow-ups into overdue / today / upcoming / none, preserving the
+  // API's soonest-first order inside each bucket.
+  const grouped = useMemo(() => {
+    const out = { overdue: [], today: [], upcoming: [], none: [] };
+    for (const fu of followUps) {
+      out[classifyDue(fu.dueDate).tone].push(fu);
+    }
+    return out;
+  }, [followUps]);
+
+  const overdueCount = grouped.overdue.length;
+  const todayCount = grouped.today.length;
 
   const headerDescription = useMemo(() => {
     const parts = [];
@@ -203,26 +439,42 @@ export default function FollowUpsPage() {
     return parts.join(' · ');
   }, [followUps.length, instructions.length, overdueCount, todayCount]);
 
+  const busy = isLoading || isRefreshing;
+
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="My work"
         title="Follow-ups"
         description={isLoading ? 'Loading your pending work…' : headerDescription}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => load({ silent: true })}
-            disabled={isLoading || isRefreshing}
-          >
-            <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
-            Refresh
-          </Button>
-        }
       />
 
+      {/* Bucket summary tiles */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {BUCKETS.filter((b) => b.key !== 'none').map((b) => (
+          <BucketStat
+            key={b.key}
+            bucket={b}
+            count={grouped[b.key].length}
+            loading={isLoading}
+          />
+        ))}
+        <BucketStat
+          bucket={{
+            key: 'instructions',
+            label: 'Open instructions',
+            icon: ClipboardList,
+            text: 'text-primary',
+            tint: 'bg-primary/10',
+            border: 'border-primary/25',
+          }}
+          count={instructions.length}
+          loading={isLoading}
+        />
+      </div>
+
       {/* Section pills */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Choose a list">
         <ViewPill
           icon={CalendarClock}
           label="Follow-ups"
@@ -242,192 +494,109 @@ export default function FollowUpsPage() {
 
       {/* Scheduled follow-ups */}
       {view === 'followups' ? (
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarClock className="h-4 w-4 text-muted-foreground" />
-              Scheduled Follow-ups
-            </CardTitle>
-            <CardDescription>
-              Open follow-ups across your leads, soonest first. Overdue items are
-              highlighted.
-            </CardDescription>
-          </div>
-          {!isLoading && overdueCount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--status-lost)/0.25)] bg-[hsl(var(--status-lost)/0.12)] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--status-lost))]">
-              <AlertTriangle className="h-3 w-3" />
-              {overdueCount} overdue
-            </span>
-          ) : null}
-        </CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                Scheduled follow-ups
+              </CardTitle>
+              <CardDescription>
+                Open follow-ups across your leads, grouped by urgency. Select a
+                row to open the lead.
+              </CardDescription>
+            </div>
+            {!isLoading && overdueCount > 0 ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/25 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                <span className="tabular-nums">{overdueCount}</span> overdue
+              </span>
+            ) : null}
+          </CardHeader>
 
-        {isLoading ? (
-          <SectionSkeleton rows={3} />
-        ) : followUps.length === 0 ? (
-          <CardContent>
-            <EmptyState
-              icon={CalendarClock}
-              title="No scheduled follow-ups"
-              description={
-                error
-                  ? 'We could not load your follow-ups. Try refreshing.'
-                  : 'You have no open follow-ups right now. Schedule one from a lead’s detail page.'
-              }
-              action={
-                error ? (
-                  <Button variant="outline" size="sm" onClick={() => load()}>
-                    <RefreshCw className="h-4 w-4" />
-                    Try again
-                  </Button>
-                ) : (
-                  <Button asChild variant="outline" size="sm">
-                    <Link to="/leads">Go to leads</Link>
-                  </Button>
-                )
-              }
-            />
-          </CardContent>
-        ) : (
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[160px]">Due</TableHead>
-                  <TableHead>Lead</TableHead>
-                  <TableHead className="hidden md:table-cell">Note</TableHead>
-                  <TableHead className="w-[150px] text-right">Due date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {followUps.map((fu) => {
-                  const { tone } = classifyDue(fu.dueDate);
-                  return (
-                    <TableRow
-                      key={`${fu.leadId}-${fu.followUpId ?? fu.dueDate ?? Math.random()}`}
-                      className={cn(
-                        tone === 'overdue' &&
-                          'bg-[hsl(var(--status-lost)/0.06)] hover:bg-[hsl(var(--status-lost)/0.1)]'
-                      )}
-                    >
-                      <TableCell className="align-top">
-                        <DuePill value={fu.dueDate} />
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <Link
-                          to={`/leads/${fu.leadId}`}
-                          className="group inline-flex items-center gap-1 font-medium text-foreground hover:text-primary"
-                        >
-                          {fu.businessName || 'Untitled lead'}
-                          <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </Link>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {fu.reference}
-                          {fu.city ? ` · ${fu.city}` : ''}
-                        </div>
-                        {fu.note ? (
-                          <p className="mt-1 text-sm text-muted-foreground md:hidden">
-                            {fu.note}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="hidden align-top text-sm text-muted-foreground md:table-cell">
-                        {fu.note || <span className="italic">No note</span>}
-                      </TableCell>
-                      <TableCell className="align-top text-right">
-                        <div className="text-sm font-medium text-foreground">
-                          {formatDate(fu.dueDate)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatRelative(fu.dueDate)}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        )}
-      </Card>
+          {isLoading ? (
+            <ListSkeleton groups={2} rows={3} />
+          ) : followUps.length === 0 ? (
+            <CardContent>
+              <EmptyState
+                icon={CalendarClock}
+                title={error ? 'Could not load follow-ups' : 'No scheduled follow-ups'}
+                description={
+                  error
+                    ? 'We could not load your follow-ups. Try refreshing.'
+                    : 'You have no open follow-ups right now. Schedule one from a lead’s detail page.'
+                }
+                action={
+                  error ? (
+                    <Button variant="outline" size="sm" onClick={() => load()}>
+                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                      Try again
+                    </Button>
+                  ) : (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/leads">Go to leads</Link>
+                    </Button>
+                  )
+                }
+              />
+            </CardContent>
+          ) : (
+            <CardContent className="p-0 pb-0 sm:p-0">
+              {BUCKETS.filter((b) => grouped[b.key].length > 0).map((b) => (
+                <BucketSection key={b.key} bucket={b} items={grouped[b.key]} />
+              ))}
+            </CardContent>
+          )}
+        </Card>
       ) : null}
 
       {/* Open instructions */}
       {view === 'instructions' ? (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            Open Instructions
-          </CardTitle>
-          <CardDescription>
-            Instructions issued to you that are not yet marked done.
-          </CardDescription>
-        </CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              Open instructions
+            </CardTitle>
+            <CardDescription>
+              Instructions issued to you that are not yet marked done. Select a
+              row to open the lead.
+            </CardDescription>
+          </CardHeader>
 
-        {isLoading ? (
-          <SectionSkeleton rows={2} />
-        ) : instructions.length === 0 ? (
-          <CardContent>
-            <EmptyState
-              icon={ClipboardList}
-              title="No open instructions"
-              description="You're all caught up — no pending instructions on your leads."
-            />
-          </CardContent>
-        ) : (
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Instruction</TableHead>
-                  <TableHead className="w-[220px]">Lead</TableHead>
-                  <TableHead className="w-[160px] text-right">Issued</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          {isLoading ? (
+            <ListSkeleton groups={1} rows={3} />
+          ) : instructions.length === 0 ? (
+            <CardContent>
+              <EmptyState
+                icon={ClipboardList}
+                title="No open instructions"
+                description="You're all caught up — no pending instructions on your leads."
+                action={
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/leads">Go to leads</Link>
+                  </Button>
+                }
+              />
+            </CardContent>
+          ) : (
+            <CardContent className="p-0 pb-0 sm:p-0">
+              <ul className="divide-y border-t">
                 {instructions.map((ins) => (
-                  <TableRow
+                  <InstructionRow
                     key={`${ins.leadId}-${ins.instructionId ?? ins.issuedAt ?? Math.random()}`}
-                  >
-                    <TableCell className="align-top text-sm text-foreground">
-                      {ins.text}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Link
-                        to={`/leads/${ins.leadId}`}
-                        className="group inline-flex items-center gap-1 font-medium text-foreground hover:text-primary"
-                      >
-                        {ins.businessName || 'Untitled lead'}
-                        <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                      </Link>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {ins.reference}
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top text-right">
-                      <div className="text-sm font-medium text-foreground">
-                        {formatDate(ins.issuedAt)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatRelative(ins.issuedAt)}
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                    item={ins}
+                  />
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        )}
-      </Card>
+              </ul>
+            </CardContent>
+          )}
+        </Card>
       ) : null}
 
-      {isRefreshing ? (
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Spinner size="sm" />
-          Refreshing…
-        </div>
-      ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {isRefreshing ? 'Refreshing follow-ups' : ''}
+      </p>
     </div>
   );
 }

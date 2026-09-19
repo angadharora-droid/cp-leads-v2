@@ -4,6 +4,7 @@ import {
   getAdminDashboard,
   getMyDashboard,
 } from '../services/dashboard.service.js';
+import { getBanquetDashboard } from '../services/banquetReport.service.js';
 
 export const adminDashboard = asyncHandler(async (_req, res) => {
   const data = await getAdminDashboard();
@@ -15,4 +16,9 @@ export const myDashboard = asyncHandler(async (req, res) => {
   return sendOk(res, data);
 });
 
-export default { adminDashboard, myDashboard };
+export const banquetDashboard = asyncHandler(async (req, res) => {
+  const data = await getBanquetDashboard(req.user);
+  return sendOk(res, data);
+});
+
+export default { adminDashboard, myDashboard, banquetDashboard };

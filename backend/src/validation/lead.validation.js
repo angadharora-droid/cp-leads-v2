@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const LEAD_STATUSES = ['Non Contracted', 'Contracted'];
+const LEAD_TYPES = ['company', 'individual'];
 const CONTACTED_FOR_OPTIONS = ['CPA', 'CPH', 'CPNM'];
 const VISIT_ACTION_OPTIONS = [
   'No action',
@@ -36,12 +37,23 @@ const dateField = z
     'Invalid date'
   );
 
+/** One branch/department row of a company's structure. */
+export const departmentInputSchema = z.object({
+  branch: optionalText(200),
+  name: trimmedString(200).min(1, 'Department name is required'),
+});
+
 /**
  * Body schema for creating a lead. Only businessName is required.
  * assignedTo is honored only for admins (enforced in service).
+ * Company leads must carry at least one department (branch optional);
+ * individuals carry none.
  */
-export const createLeadSchema = z.object({
-  businessName: trimmedString(300).min(1, 'Business name is required'),
+export const createLeadSchema = z
+  .object({
+  leadType: z.enum(LEAD_TYPES).optional().default('company'),
+  businessName: trimmedString(300).min(1, 'Name is required'),
+  departments: z.array(departmentInputSchema).max(200).optional(),
   contactPerson: optionalText(200),
   designation: optionalText(200),
   mobile: optionalText(40),
@@ -58,7 +70,16 @@ export const createLeadSchema = z.object({
   followUps: z
     .array(z.object({ dueDate: dateField, note: optionalText(2000) }))
     .optional(),
-});
+  })
+  .refine(
+    (obj) =>
+      obj.leadType === 'individual' ||
+      (obj.departments || []).some((d) => d.name && d.name.trim()),
+    {
+      message: 'A company lead needs at least one department',
+      path: ['departments'],
+    }
+  );
 
 /**
  * Body schema for updating a lead. All fields optional; reference is never editable.
@@ -81,6 +102,7 @@ export const updateLeadSchema = z
 
 export const listLeadsQuerySchema = z.object({
   status: z.enum(LEAD_STATUSES).optional(),
+  leadType: z.enum(LEAD_TYPES).optional(),
   city: z.string().trim().optional(),
   businessType: z.string().trim().optional(),
   assignedTo: objectId.optional(),
@@ -89,6 +111,20 @@ export const listLeadsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   sort: z.string().trim().optional(),
 });
+
+export const checkDuplicateQuerySchema = z.object({
+  businessName: trimmedString(300).min(2, 'Enter at least 2 characters'),
+  mobile: optionalText(40),
+  leadType: z.enum(LEAD_TYPES).optional(),
+  excludeId: objectId.optional(),
+});
+
+export const updateDepartmentSchema = z
+  .object({
+    branch: optionalText(200),
+    name: trimmedString(200).min(1).optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
 export const assignLeadSchema = z.object({
   assignedTo: objectId,
@@ -127,6 +163,9 @@ export default {
   createLeadSchema,
   updateLeadSchema,
   listLeadsQuerySchema,
+  checkDuplicateQuerySchema,
+  departmentInputSchema,
+  updateDepartmentSchema,
   assignLeadSchema,
   noteSchema,
   actionPointSchema,

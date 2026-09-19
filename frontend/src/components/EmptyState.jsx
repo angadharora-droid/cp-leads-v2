@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
  * @param {React.ReactNode} [props.title]
  * @param {React.ReactNode} [props.description]
  * @param {React.ReactNode} [props.action] e.g. a "Create" button
+ * @param {'default'|'compact'} [props.size]
  * @param {string} [props.className]
  */
 function EmptyState({
@@ -16,22 +17,30 @@ function EmptyState({
   title = 'Nothing here yet',
   description,
   action,
+  size = 'default',
   className,
 }) {
+  const compact = size === 'compact';
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-card/40 px-6 py-12 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-muted/20 px-6 text-center',
+        compact ? 'py-8' : 'py-12',
         className
       )}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Icon className="h-6 w-6" />
+      <div
+        className={cn(
+          'flex items-center justify-center rounded-full bg-primary/10 text-primary',
+          compact ? 'h-10 w-10' : 'h-12 w-12'
+        )}
+      >
+        <Icon className={compact ? 'h-5 w-5' : 'h-6 w-6'} aria-hidden="true" />
       </div>
       <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
         {description ? (
-          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+          <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
             {description}
           </p>
         ) : null}

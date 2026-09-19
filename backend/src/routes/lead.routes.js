@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import User from '../models/User.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import { sendOk } from '../utils/apiResponse.js';
 
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -8,12 +11,19 @@ import * as leadController from '../controllers/lead.controller.js';
 import * as activityController from '../controllers/leadActivity.controller.js';
 import * as kitController from '../controllers/kit.controller.js';
 import { createKitSchema } from '../validation/kit.validation.js';
+import * as enquiryController from '../controllers/enquiry.controller.js';
+import { createEnquirySchema } from '../validation/enquiry.validation.js';
+import * as arcController from '../controllers/arc.controller.js';
+import { createArcSchema } from '../validation/arc.validation.js';
 
 import {
   createLeadSchema,
   updateLeadSchema,
   listLeadsQuerySchema,
+  checkDuplicateQuerySchema,
   assignLeadSchema,
+  departmentInputSchema,
+  updateDepartmentSchema,
   noteSchema,
   actionPointSchema,
   followUpSchema,
@@ -41,6 +51,18 @@ router.post(
   leadController.create
 );
 
+// Duplicate-company lookup for the lead form (must come before /:id).
+router.get(
+  '/check-duplicate',
+  validate(checkDuplicateQuerySchema, 'query'),
+  leadController.checkDuplicate
+);
+
+router.get('/assignees', requireRole('admin', 'manager'), asyncHandler(async (_req, res) => {
+  const users = await User.find({ role: 'sales_exec' }).select('name').sort({ name: 1 });
+  return sendOk(res, { users });
+}));
+
 router.get('/:id', leadController.getOne);
 
 router.patch(
@@ -59,6 +81,23 @@ router.patch(
   validate(assignLeadSchema),
   leadController.assign
 );
+
+/* ------------------------------ Departments ---------------------------- */
+// Company structure: branch/department nodes that enquiries and ARCs hang off.
+
+router.post(
+  '/:id/departments',
+  validate(departmentInputSchema),
+  leadController.addDepartment
+);
+
+router.patch(
+  '/:id/departments/:deptId',
+  validate(updateDepartmentSchema),
+  leadController.updateDepartment
+);
+
+router.delete('/:id/departments/:deptId', leadController.removeDepartment);
 
 /* -------------------------------- Notes -------------------------------- */
 
@@ -120,6 +159,22 @@ router.post(
   validate(createKitSchema),
   kitController.create
 );
+
+/* ------------------------------- Enquiries ------------------------------ */
+
+router.get('/:id/enquiries', enquiryController.listForLead);
+
+router.post(
+  '/:id/enquiries',
+  validate(createEnquirySchema),
+  enquiryController.createForLead
+);
+
+/* ---------------------------- Rate contracts --------------------------- */
+
+router.get('/:id/arcs', arcController.listForLead);
+
+router.post('/:id/arcs', validate(createArcSchema), arcController.createForLead);
 
 /* ------------------------------ Instructions --------------------------- */
 

@@ -29,6 +29,18 @@ export default {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
         },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+        },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
@@ -45,8 +57,15 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        sidebar: {
+          DEFAULT: 'hsl(var(--sidebar))',
+          foreground: 'hsl(var(--sidebar-foreground))',
+          border: 'hsl(var(--sidebar-border))',
+        },
+        topbar: 'hsl(var(--topbar))',
       },
       borderRadius: {
+        xl: 'calc(var(--radius) + 4px)',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
@@ -66,9 +85,12 @@ export default {
         ],
       },
       boxShadow: {
-        // Soft brand-tinted elevation for hero surfaces (login card, popovers).
+        // Elevation scale: card (rest) → card-hover → elevated (popovers, hero).
+        card: '0 1px 2px hsl(200 18% 14% / 0.04), 0 1px 3px hsl(200 18% 14% / 0.06)',
+        'card-hover':
+          '0 2px 4px hsl(200 18% 14% / 0.05), 0 8px 20px -8px hsl(200 18% 14% / 0.14)',
         elevated:
-          '0 1px 2px hsl(200 18% 14% / 0.05), 0 8px 24px -8px hsl(200 18% 14% / 0.12)',
+          '0 1px 2px hsl(200 18% 14% / 0.05), 0 12px 32px -8px hsl(200 18% 14% / 0.16)',
       },
       keyframes: {
         'accordion-down': {
@@ -87,12 +109,32 @@ export default {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'slide-in-right': {
+          from: { opacity: '0', transform: 'translateX(12px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
+        shimmer: {
+          '100%': { transform: 'translateX(100%)' },
+        },
+        // Side panel anchored to the right edge (enquiry form).
+        'panel-in-right': {
+          from: { transform: 'translateX(100%)' },
+          to: { transform: 'translateX(0)' },
+        },
+        'panel-out-right': {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(100%)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',
-        'slide-in': 'slide-in 0.2s ease-out',
+        'slide-in': 'slide-in 0.25s ease-out',
+        'slide-in-right': 'slide-in-right 0.25s ease-out',
+        shimmer: 'shimmer 1.6s infinite',
+        'panel-in-right': 'panel-in-right 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
+        'panel-out-right': 'panel-out-right 0.2s ease-in',
       },
     },
   },

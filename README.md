@@ -67,9 +67,21 @@ Open http://localhost:5173.
 Override with `ADMIN_EMAIL`, `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`) env vars
 when seeding. Sales executive accounts are created by the admin from the Users page.
 
-## Roles
-- **admin** — sees all leads; manages users, the lead tracker, and audit logs.
-- **sales_exec** — sees only their own assigned leads.
+## Roles and section access
+
+Create or edit accounts from **Users**, choose **Executive**, **Manager**, or **Admin**, and assign the required sections. Existing `sales_exec` accounts remain Executives.
+
+| Section | Executive | Manager |
+| --- | --- | --- |
+| Leads CRM | Works on assigned leads and their enquiries, contracts and follow-ups | Sees all executives' leads, dashboards and reports |
+| Function Prospectus | Prepares sheets for assigned leads; sees sheets they made or sheets on their assigned leads | Sees all sheets, approves them, and prints/downloads/emails approved FPs |
+| Estimate Accounts | Prepares the existing estimate for accessible FP sheets; sees estimates they made or estimates on assigned leads | Sees all FPs, estimates and confirmed functions; approves estimates |
+
+Admins retain full access and manage users and settings. A Manager's access is limited to assigned sections; an Accounts Manager can review FP sheets through Estimate Accounts without acquiring FP editing or printing permissions.
+
+FP changes or a refresh from the booking reset approval. Existing sheets without an approval are drafts and must be approved before printing. PDF preview is also manager-only because it supplies a printable file. Approved estimates remain final and locked, as before. The existing handwritten consumption and bill break-up tables are unchanged.
+
+Run the API permission regression tests with `cd backend` and `npm test` (`npm.cmd test` in PowerShell if script execution is restricted). These tests exercise routes and services with isolated model stubs and generate an approved FP PDF; they do not change the application database.
 
 ## Lead reference
 Every lead gets an auto reference: `CPH-[CITY]-[DDMMYY]-[###]` (e.g. `CPH-MUMBAI-300626-001`).

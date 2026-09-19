@@ -31,7 +31,8 @@ export const downloadPdf = asyncHandler(async (req, res) => {
   const { buffer, filename, contentType } = await kitService.generateKitPdf(
     req.params.kitId,
     req.query.doc || 'proposal',
-    req.user
+    req.user,
+    req
   );
   res.setHeader('Content-Type', contentType || 'application/pdf');
   res.setHeader(

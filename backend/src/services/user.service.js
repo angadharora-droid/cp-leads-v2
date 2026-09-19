@@ -79,7 +79,7 @@ async function assertPhoneAvailable(phone, excludeId) {
  * @returns {Promise<object>} created user document.
  */
 export async function createUser(input, req) {
-  const { name, email, password, role, phone } = input;
+  const { name, email, password, role, phone, modules } = input;
 
   const policyMessage = passwordPolicyError(password, role || 'sales_exec');
   if (policyMessage) {
@@ -103,6 +103,7 @@ export async function createUser(input, req) {
     passwordHash,
     role: role || 'sales_exec',
     phone: phone || null,
+    modules: Array.isArray(modules) && modules.length ? modules : ['leads'],
   });
 
   await writeAudit({
@@ -160,6 +161,11 @@ export async function updateUser(id, updates, req) {
       await assertPhoneAvailable(updates.phone, user._id);
     }
     changes.phone = updates.phone;
+  }
+
+  if (Array.isArray(updates.modules) && updates.modules.length) {
+    const next = [...new Set(updates.modules)].sort();
+    if (next.join(',') !== [...(user.modules || [])].sort().join(',')) changes.modules = next;
   }
 
   if (Object.keys(changes).length === 0) {

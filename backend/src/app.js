@@ -16,6 +16,14 @@ import followUpRoutes from './routes/followup.routes.js';
 import reportRoutes from './routes/report.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import auditRoutes from './routes/audit.routes.js';
+import enquiryRoutes from './routes/enquiry.routes.js';
+import banquetRoutes from './routes/banquet.routes.js';
+import signRoutes from './routes/sign.routes.js';
+import arcRoutes from './routes/arc.routes.js';
+import prospectusRoutes from './routes/prospectus.routes.js';
+import estimateRoutes from './routes/estimate.routes.js';
+import { authenticate } from './middleware/auth.js';
+import { requireModule } from './middleware/rbac.js';
 
 const app = express();
 
@@ -29,7 +37,8 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json());
+// Room for a drawn signature (a PNG data URL, capped at 300,000 characters by its validation).
+app.use(express.json({ limit: '500kb' }));
 app.use(morgan('dev'));
 
 app.use('/api', generalLimiter);
@@ -40,12 +49,27 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+
+// The Leads CRM is one module; the Function Prospectus section is another.
+// Each user opens only the modules assigned to them (admins open all).
+app.use(
+  ['/api/leads', '/api/kits', '/api/follow-ups', '/api/reports', '/api/dashboard', '/api/enquiries', '/api/banquet', '/api/arcs'],
+  authenticate,
+  requireModule('leads')
+);
 app.use('/api/leads', leadRoutes);
 app.use('/api/kits', kitRoutes);
 app.use('/api/follow-ups', followUpRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/enquiries', enquiryRoutes);
+app.use('/api/banquet', banquetRoutes);
+app.use('/api/arcs', arcRoutes);
+app.use('/api/prospectus', prospectusRoutes);
+app.use('/api/estimates', estimateRoutes);
+// Public client-facing signing links (token-gated, unauthenticated).
+app.use('/api/sign', signRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

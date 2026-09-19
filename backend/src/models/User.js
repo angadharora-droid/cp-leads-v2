@@ -3,6 +3,12 @@ import bcrypt from 'bcryptjs';
 
 const { Schema, model } = mongoose;
 
+/**
+ * Sections a user can open. Admins see everything; everyone else only the
+ * modules assigned to them (legacy accounts default to the Leads CRM).
+ */
+export const MODULES = ['leads', 'prospectus', 'estimates'];
+
 // Personal sending mailbox (the exec's official email ID). When linked,
 // client emails go out from this account instead of the shared SMTP_* one.
 // The mailbox password is stored encrypted (utils/mailCrypto.js).
@@ -35,10 +41,11 @@ const userSchema = new Schema(
     phone: { type: String, trim: true, default: null },
     role: {
       type: String,
-      enum: ['admin', 'sales_exec'],
+      enum: ['admin', 'manager', 'sales_exec'],
       default: 'sales_exec',
     },
     isActive: { type: Boolean, default: true },
+    modules: { type: [{ type: String, enum: MODULES }], default: () => ['leads'] },
     lastLoginAt: { type: Date },
     emailSender: { type: emailSenderSchema, default: undefined },
   },

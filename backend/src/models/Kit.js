@@ -177,6 +177,12 @@ const uploadedFileSchema = new Schema(
 const kitSchema = new Schema(
   {
     lead: { type: Schema.Types.ObjectId, ref: 'Lead', required: true, index: true },
+    // Branch/department node (Lead.departments._id) the kit was raised for.
+    department: { type: Schema.Types.ObjectId },
+    // When a corporate kit is the agreement of an annual rate contract, the
+    // ARC it belongs to — kit actions (generate / email / signed upload)
+    // advance that ARC's stage.
+    arc: { type: Schema.Types.ObjectId, ref: 'Arc', index: true },
     kitType: { type: String, enum: KIT_TYPES, required: true },
     status: { type: String, enum: KIT_STATUSES, default: 'draft', index: true },
     contractNumber: { type: String, default: '' },

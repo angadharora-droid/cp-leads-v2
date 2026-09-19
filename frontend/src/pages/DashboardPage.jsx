@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -16,7 +16,13 @@ import {
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
+  CalendarCheck,
+  Megaphone,
+  Plus,
+  KanbanSquare,
+  FileSignature,
   Briefcase,
   CalendarClock,
   History,
@@ -50,82 +56,46 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EmptyState } from '@/components/EmptyState';
 import { useTheme } from '@/context/ThemeContext';
-import { formatRelative, getInitials } from '@/lib/format';
+import { formatDate, formatRelative, getInitials } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { useChartColors } from '@/lib/useChartColors';
+import BanquetDashboard from '@/components/dashboard/BanquetDashboard';
 
-/* -------------------------------------------------------------------------- */
-/*  Theme-aware color helpers                                                  */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Read an HSL CSS variable (raw channels) off :root / .dark and wrap it in
- * an hsl() string so Recharts (which needs concrete colors, not CSS vars)
- * renders correctly in both light and dark themes.
- *
- * @param {string} token e.g. '--chart-1'
- * @param {number} [alpha]
- * @returns {string}
- */
-function readHsl(token, alpha) {
-  if (typeof window === 'undefined') return 'hsl(0 0% 50%)';
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(token)
-    .trim();
-  const channels = raw || '0 0% 50%';
-  return alpha == null ? `hsl(${channels})` : `hsl(${channels} / ${alpha})`;
-}
-
-const STATUS_TOKENS = {
-  'Non Contracted': '--status-non-contracted',
-  Contracted: '--status-contracted',
-};
-
-const CHART_TOKENS = [
-  '--chart-1',
-  '--chart-2',
-  '--chart-3',
-  '--chart-4',
-  '--chart-5',
-  '--chart-6',
-];
-
-/**
- * Returns a memoized bag of resolved chart colors. Re-resolves whenever the
- * theme changes (the `theme` value from ThemeContext is the dependency).
- */
-function useChartColors() {
-  const { theme } = useTheme();
-  return useMemo(() => {
-    const palette = CHART_TOKENS.map((t) => readHsl(t));
-    const status = Object.fromEntries(
-      Object.entries(STATUS_TOKENS).map(([k, v]) => [k, readHsl(v)])
-    );
-    return {
-      palette,
-      status,
-      grid: readHsl('--border'),
-      axis: readHsl('--muted-foreground'),
-      primary: readHsl('--primary'),
-      accent: readHsl('--accent'),
-      colorFor: (i) => palette[i % palette.length],
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme]);
-}
+/* Chart colours come from the shared hook in lib/useChartColors. */
 
 /* -------------------------------------------------------------------------- */
 /*  Small presentational helpers                                              */
 /* -------------------------------------------------------------------------- */
 
-function KpiCard({ icon: Icon, label, value, hint, accentToken = '--primary' }) {
+function KpiCard({ icon: Icon, label, value, hint, accentToken = '--primary', to }) {
+  const navigate = useNavigate();
+  const clickable = Boolean(to);
   return (
-    <Card className="relative overflow-hidden transition-shadow duration-200 hover:shadow-md">
+    <Card
+      role={clickable ? 'link' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => navigate(to) : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                navigate(to);
+              }
+            }
+          : undefined
+      }
+      className={cn('relative overflow-hidden', clickable && 'surface-interactive')}
+      title={clickable ? 'Open list' : undefined}
+    >
       {/* Accent edge to tie the metric to its status color. */}
       <span
         className="absolute inset-y-0 left-0 w-1"
         style={{ backgroundColor: `hsl(var(${accentToken}) / 0.7)` }}
         aria-hidden="true"
       />
-      <CardContent className="flex items-center gap-4 p-5">
+      <CardContent className="flex items-center gap-4 p-5 sm:p-5">
         <div
           className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
           style={{
@@ -266,6 +236,7 @@ function AdminDashboard({ data, colors }) {
           label="Total Leads"
           value={totalLeads.toLocaleString('en-IN')}
           accentToken="--primary"
+          to="/leads"
         />
         <KpiCard
           icon={Trophy}
@@ -273,6 +244,7 @@ function AdminDashboard({ data, colors }) {
           value={contractedCount.toLocaleString('en-IN')}
           hint="Signed clients"
           accentToken="--status-contracted"
+          to="/leads?status=Contracted"
         />
         <KpiCard
           icon={XCircle}
@@ -280,6 +252,7 @@ function AdminDashboard({ data, colors }) {
           value={nonContractedCount.toLocaleString('en-IN')}
           hint="Not yet signed"
           accentToken="--status-non-contracted"
+          to="/leads?status=Non+Contracted"
         />
         <KpiCard
           icon={TrendingUp}
@@ -563,6 +536,7 @@ function MyDashboard({ data, colors }) {
           label="My Leads"
           value={totalLeads.toLocaleString('en-IN')}
           accentToken="--primary"
+          to="/leads"
         />
         <KpiCard
           icon={Activity}
@@ -570,6 +544,7 @@ function MyDashboard({ data, colors }) {
           value={nonContractedCount.toLocaleString('en-IN')}
           hint="Not yet signed"
           accentToken="--status-non-contracted"
+          to="/leads?status=Non+Contracted"
         />
         <KpiCard
           icon={Trophy}
@@ -577,6 +552,7 @@ function MyDashboard({ data, colors }) {
           value={contractedCount.toLocaleString('en-IN')}
           hint="Signed clients"
           accentToken="--status-contracted"
+          to="/leads?status=Contracted"
         />
         <KpiCard
           icon={CalendarClock}
@@ -584,6 +560,7 @@ function MyDashboard({ data, colors }) {
           value={openFollowUps.toLocaleString('en-IN')}
           hint="Awaiting action"
           accentToken="--accent"
+          to="/follow-ups"
         />
       </div>
 
@@ -699,13 +676,152 @@ function MyDashboard({ data, colors }) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Today — what needs attention                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Overdue and due-today follow-ups plus open instructions, so the first
+ * thing on the dashboard is what to do next. Best effort: hidden on error.
+ */
+function AttentionStrip() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get('/follow-ups/mine')
+      .then((res) => {
+        if (alive) setData(res?.data?.data || { followUps: [], instructions: [] });
+      })
+      .catch(() => {
+        if (alive) setData({ followUps: [], instructions: [] });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!data) return <Skeleton className="h-24 w-full rounded-xl" />;
+
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  const overdue = data.followUps.filter((f) => f.dueDate && new Date(f.dueDate) < start);
+  const today = data.followUps.filter(
+    (f) => f.dueDate && new Date(f.dueDate) >= start && new Date(f.dueDate) < end
+  );
+  const instructions = data.instructions || [];
+  const nothing = overdue.length === 0 && today.length === 0 && instructions.length === 0;
+
+  const tiles = [
+    {
+      label: 'Overdue follow-ups',
+      value: overdue.length,
+      icon: AlertTriangle,
+      tone: overdue.length ? 'destructive' : 'muted',
+      to: '/follow-ups',
+      sample: overdue[0],
+    },
+    {
+      label: 'Due today',
+      value: today.length,
+      icon: CalendarCheck,
+      tone: today.length ? 'warning' : 'muted',
+      to: '/follow-ups',
+      sample: today[0],
+    },
+    {
+      label: 'Open instructions',
+      value: instructions.length,
+      icon: Megaphone,
+      tone: instructions.length ? 'info' : 'muted',
+      to: '/follow-ups',
+      sample: instructions[0],
+    },
+  ];
+
+  const toneClass = {
+    destructive: 'border-destructive/40 bg-destructive/10 text-destructive',
+    warning: 'border-warning/40 bg-warning/10 text-warning',
+    info: 'border-info/40 bg-info/10 text-info',
+    muted: 'border-border bg-muted/40 text-muted-foreground',
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+        <div>
+          <CardTitle className="text-base">Today</CardTitle>
+          <CardDescription>
+            {nothing ? 'All clear — nothing overdue or due today.' : 'What needs your attention first.'}
+          </CardDescription>
+        </div>
+        <div className="hidden gap-2 sm:flex">
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/enquiries">
+              <KanbanSquare className="h-4 w-4" />
+              Enquiries
+            </Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/rate-contracts">
+              <FileSignature className="h-4 w-4" />
+              Rate contracts
+            </Link>
+          </Button>
+          <Button size="sm" asChild>
+            <Link to="/leads/new">
+              <Plus className="h-4 w-4" />
+              New lead
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-3">
+        {tiles.map((t) => {
+          const Icon = t.icon;
+          return (
+            <Link
+              key={t.label}
+              to={t.to}
+              className={cn(
+                'surface-interactive flex items-start gap-3 rounded-lg border p-3',
+                toneClass[t.tone]
+              )}
+            >
+              <Icon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium text-foreground">{t.label}</span>
+                  <span className="text-xl font-semibold tabular-nums">{t.value}</span>
+                </span>
+                {t.sample ? (
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {t.sample.businessName}
+                    {t.sample.dueDate ? ` · ${formatDate(t.sample.dueDate)}` : ''}
+                    {t.sample.text ? ` · ${t.sample.text}` : ''}
+                  </span>
+                ) : (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">None</span>
+                )}
+              </span>
+            </Link>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const colors = useChartColors();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = ['admin', 'manager'].includes(user?.role);
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -751,6 +867,18 @@ export default function DashboardPage() {
             : `Welcome back, ${firstName}. Here is your pipeline overview.`
         }
       />
+
+      <div className="mb-6">
+        <AttentionStrip />
+      </div>
+
+      {/* Banquet pipeline: stages with value, wins, attention, upcoming, charts. */}
+      <section className="mb-8 space-y-3" aria-label="Banquet pipeline">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Banquets</h2>
+        <BanquetDashboard isAdmin={isAdmin} />
+      </section>
+
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Leads</h2>
 
       {isLoading ? (
         <DashboardSkeleton />

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { passwordPolicyError } from '../utils/passwordPolicy.js';
 import { PHONE_SHAPE_PATTERN, digitsOnly } from '../utils/phone.js';
 
-const ROLES = ['admin', 'sales_exec'];
+const ROLES = ['admin', 'manager', 'sales_exec'];
 
 const emailSchema = z
   .string({ required_error: 'Email is required' })
@@ -56,6 +56,7 @@ export const createUserSchema = z
     password: passwordShapeSchema,
     role: z.enum(ROLES).optional().default('sales_exec'),
     phone: phoneSchema,
+    modules: z.array(z.enum(['leads', 'prospectus', 'estimates'])).min(1).max(3).optional(),
   })
   .superRefine((data, ctx) => {
     const message = passwordPolicyError(data.password, data.role);
@@ -70,6 +71,7 @@ export const updateUserSchema = z
     role: z.enum(ROLES).optional(),
     isActive: z.boolean().optional(),
     phone: phoneSchema,
+    modules: z.array(z.enum(['leads', 'prospectus', 'estimates'])).min(1).max(3).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',

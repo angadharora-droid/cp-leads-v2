@@ -1,4 +1,9 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
+
+import { getErrorMessage } from '@/lib/api';
+import { AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +17,8 @@ import { Spinner } from '@/components/ui/spinner';
 
 /**
  * Confirmation dialog. Controlled via `open`/`onOpenChange`. The confirm
- * handler may be async; a spinner shows while it is pending.
+ * handler may be async; a spinner shows while it is pending and the dialog
+ * cannot be dismissed until it settles.
  *
  * @param {object} props
  * @param {boolean} props.open
@@ -23,6 +29,9 @@ import { Spinner } from '@/components/ui/spinner';
  * @param {string} [props.confirmText]
  * @param {string} [props.cancelText]
  * @param {'default'|'destructive'} [props.variant] confirm button variant
+ * @param {React.ComponentType<{ className?: string }>|null} [props.icon]
+ *   lucide icon shown in a tinted circle above the title. Defaults to
+ *   AlertTriangle for the destructive variant; pass `null` to hide it.
  */
 function ConfirmDialog({
   open,
@@ -33,14 +42,21 @@ function ConfirmDialog({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   variant = 'destructive',
+  icon,
 }) {
   const [isPending, setIsPending] = useState(false);
+  const Icon = icon === undefined ? (variant === 'destructive' ? AlertTriangle : null) : icon;
+  const destructive = variant === 'destructive';
 
+  // A failed action is reported here, and the dialog stays open, so no
+  // confirm ever fails silently.
   async function handleConfirm() {
     try {
       setIsPending(true);
       await onConfirm?.();
       onOpenChange?.(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Action failed'));
     } finally {
       setIsPending(false);
     }
@@ -48,14 +64,25 @@ function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !isPending && onOpenChange?.(next)}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogHeader className="items-center text-center sm:items-start sm:text-left">
+          {Icon ? (
+            <div
+              className={cn(
+                'mb-1 flex h-11 w-11 items-center justify-center rounded-full',
+                destructive ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+              )}
+              aria-hidden="true"
+            >
+              <Icon className="h-5 w-5" />
+            </div>
+          ) : null}
           <DialogTitle>{title}</DialogTitle>
           {description ? (
-            <DialogDescription>{description}</DialogDescription>
+            <DialogDescription className="leading-relaxed">{description}</DialogDescription>
           ) : null}
         </DialogHeader>
-        <DialogFooter className="mt-2 gap-2">
+        <DialogFooter className="mt-2 gap-2 sm:space-x-0">
           <Button
             type="button"
             variant="outline"
