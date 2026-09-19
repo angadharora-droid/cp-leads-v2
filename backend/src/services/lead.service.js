@@ -10,6 +10,7 @@ import { AppError } from '../utils/apiResponse.js';
 import { writeAudit } from '../utils/audit.js';
 import { generateLeadReference } from '../utils/reference.js';
 import { phoneKey } from '../utils/phone.js';
+import { assignSingleEnquiryActivity } from './enquiryActivityScope.service.js';
 
 const EDITABLE_FIELDS = [
   'businessName',
@@ -583,7 +584,8 @@ export async function listLeads(query, actor) {
  * Returns a single populated lead, scope-enforced.
  */
 export async function getLead(id, actor) {
-  await loadLeadScoped(id, actor);
+  const scoped = await loadLeadScoped(id, actor);
+  await assignSingleEnquiryActivity(scoped);
   const lead = await Lead.findById(id)
     .populate('assignedTo', 'name email role')
     .populate('createdBy', 'name email role')

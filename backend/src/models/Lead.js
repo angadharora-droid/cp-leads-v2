@@ -92,6 +92,11 @@ const instructionSchema = new Schema(
   { _id: true }
 );
 
+// Activity belongs to one enquiry; an absent reference is older unlinked activity.
+for (const schema of [noteSchema, actionPointSchema, followUpSchema, visitReportSchema, instructionSchema]) {
+  schema.add({ enquiry: { type: Schema.Types.ObjectId, ref: 'Enquiry' } });
+}
+
 /**
  * One node of a company's structure: a department, optionally under a
  * branch. `branch` is free text and may be empty when the company has no

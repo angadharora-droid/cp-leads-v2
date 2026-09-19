@@ -2,6 +2,9 @@ import { Router } from 'express';
 
 import { authenticate } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { requireRole } from '../middleware/rbac.js';
+import * as activityController from '../controllers/leadActivity.controller.js';
+import { noteSchema, actionPointSchema, followUpSchema, closeFollowUpSchema, instructionSchema, visitReportSchema } from '../validation/lead.validation.js';
 
 import * as enquiryController from '../controllers/enquiry.controller.js';
 
@@ -28,6 +31,17 @@ router.get('/:enquiryId/lifecycle', enquiryController.lifecycle);
 router.patch('/:enquiryId', validate(updateEnquirySchema), enquiryController.update);
 
 router.delete('/:enquiryId', enquiryController.remove);
+
+router.post('/:enquiryId/notes', validate(noteSchema), activityController.addNote);
+router.patch('/:enquiryId/notes/:noteId', validate(noteSchema), activityController.editNote);
+router.delete('/:enquiryId/notes/:noteId', activityController.deleteNote);
+router.post('/:enquiryId/action-points', validate(actionPointSchema), activityController.addActionPoint);
+router.post('/:enquiryId/action-points/:apId/clear', activityController.clearActionPoint);
+router.post('/:enquiryId/follow-ups', validate(followUpSchema), activityController.scheduleFollowUp);
+router.post('/:enquiryId/follow-ups/:fuId/close', validate(closeFollowUpSchema), activityController.closeFollowUp);
+router.post('/:enquiryId/visit-reports', validate(visitReportSchema), activityController.addVisitReport);
+router.post('/:enquiryId/instructions', requireRole('admin'), validate(instructionSchema), activityController.issueInstruction);
+router.post('/:enquiryId/instructions/:insId/done', activityController.completeInstruction);
 
 /* ----------------------------- Stage actions ----------------------------- */
 

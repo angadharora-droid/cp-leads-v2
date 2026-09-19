@@ -704,7 +704,7 @@ export async function buildProformaPdf(enquiry, lead, options = {}) {
         { text: [F('GSTN : '), B('27AAACH4474J1ZE')], alignment: 'right' },
       ],
     },
-    { text: 'PRO-FORMA INVOICE', bold: true, fontSize: 15, decoration: 'underline', margin: [12, 6, 0, 8] },
+    { text: `PRO-FORMA INVOICE - Version ${enquiry.proforma?.version || 1}`, bold: true, fontSize: 15, decoration: 'underline', margin: [12, 6, 0, 8] },
     {
       table: { widths: [88, 6, '*', 78, 6, 120], body: fieldRows },
       layout: NOLINES,
@@ -787,7 +787,7 @@ export async function buildProformaPdf(enquiry, lead, options = {}) {
   };
   return {
     buffer: await renderToBuffer(definition),
-    filename: `Pro-Forma Invoice ${safeName(enquiry.proforma?.number, 'PI')} - ${safeName(lead?.businessName, 'Guest')}.pdf`,
+    filename: `Pro-Forma Invoice ${safeName(enquiry.proforma?.number, 'PI')} v${enquiry.proforma?.version || 1} - ${safeName(lead?.businessName, 'Guest')}.pdf`,
     contentType: 'application/pdf',
   };
 }

@@ -25,14 +25,20 @@ For Gmail, use an [App Password](https://myaccount.google.com/apppasswords), not
 
 ## Previous proposal and contract versions
 
-Banquet enquiries show **Previous proposal versions** and **Previous contract versions**
-under Documents, with Preview and Download actions. Edits preserve the previous document
+Banquet enquiries show **Documents and versions** inside **Life cycle**, with numbered
+proposal, contract and pro-forma versions and Preview/Download actions. Edits preserve the previous document
 inputs as JSON in MongoDB; PDF files are generated in memory when opened, not stored.
 Newly rendered documents also capture the guest details, preparer and configured session
 timings so later changes do not alter archived versions. JSON uses a small amount of database
 space. Historical versions that were never captured cannot be recovered; older saved versions
 use the information available in their snapshots. Uploaded and digitally signed copies retain
 their existing storage behavior.
+
+**At a glance** belongs to each enquiry and holds its follow-ups, visits, action points,
+instructions and internal notes. Opening a lead or enquiry automatically assigns older
+unlinked activity when that lead has exactly one enquiry. For leads with zero or multiple
+enquiries, the existing records remain under **Unlinked lead activity** on the lead page.
+Follow-up lists and reminders link to the enquiry that owns the activity.
 
 ## Stack
 

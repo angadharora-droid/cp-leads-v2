@@ -217,6 +217,7 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       at: firstEntry('proposal')?.at || enquiry.proposal?.generatedAt,
       details: [
         ['Proposal number', enquiry.proposal?.number],
+        ['Proposal version', enquiry.proposal?.number ? `Version ${enquiry.proposal.version || 1}` : ''],
         ['Revision', enquiry.proposal?.revision ? String(enquiry.proposal.revision) : ''],
         ['Generated on', when(enquiry.proposal?.generatedAt)],
         ['Emailed on', when(enquiry.proposal?.sentAt)],
@@ -249,7 +250,9 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       at: firstEntry('provisional')?.at || enquiry.contract?.sentAt || enquiry.contract?.generatedAt,
       details: [
         ['Contract number', enquiry.contract?.number],
+        ['Contract version', enquiry.contract?.number ? `Version ${enquiry.contract.version || 1}` : ''],
         ['Pro-forma number', enquiry.proforma?.number],
+        ['Pro-forma version', enquiry.proforma?.number ? `Version ${enquiry.proforma.version || 1}` : ''],
         ['Contract made on', when(enquiry.contract?.generatedAt)],
         ['Emailed on', when(enquiry.contract?.sentAt)],
         ['Emailed to', enquiry.contract?.sentTo],

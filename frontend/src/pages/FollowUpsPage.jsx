@@ -218,13 +218,13 @@ function FollowUpRow({ item, bucket }) {
   return (
     <li>
       <Link
-        to={`/leads/${item.leadId}`}
+        to={item.enquiryId ? `/enquiries/${item.enquiryId}` : `/leads/${item.leadId}`}
         className={cn(
           'group flex min-h-[3.5rem] cursor-pointer items-start gap-3 px-4 py-3 transition-colors duration-150 sm:items-center sm:px-6',
           'focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           bucket.rowHover
         )}
-        aria-label={`Open lead ${item.businessName || 'Untitled lead'}`}
+        aria-label={`Open ${item.enquiryId ? 'enquiry' : 'lead'} ${item.businessName || ''}`}
       >
         <span
           className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full sm:mt-0', bucket.accent)}
@@ -236,7 +236,7 @@ function FollowUpRow({ item, bucket }) {
               {item.businessName || 'Untitled lead'}
             </span>
             <span className="text-xs text-muted-foreground">
-              {item.reference}
+              {item.reference}{item.enquiryId ? ` ? Enquiry ${item.enquiryId.slice(-6)}` : ' ? Unlinked lead activity'}
               {item.city ? ` · ${item.city}` : ''}
             </span>
           </div>
@@ -316,12 +316,12 @@ function InstructionRow({ item }) {
   return (
     <li>
       <Link
-        to={`/leads/${item.leadId}`}
+        to={item.enquiryId ? `/enquiries/${item.enquiryId}` : `/leads/${item.leadId}`}
         className={cn(
           'group flex min-h-[3.5rem] cursor-pointer items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-muted/50 sm:items-center sm:px-6',
           'focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
         )}
-        aria-label={`Open lead ${item.businessName || 'Untitled lead'}`}
+        aria-label={`Open ${item.enquiryId ? 'enquiry' : 'lead'} ${item.businessName || ''}`}
       >
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <ClipboardList className="h-4 w-4" aria-hidden="true" />
@@ -332,7 +332,7 @@ function InstructionRow({ item }) {
             <span className="font-medium text-foreground group-hover:text-primary">
               {item.businessName || 'Untitled lead'}
             </span>
-            <span>{item.reference}</span>
+            <span>{item.reference}{item.enquiryId ? ` ? Enquiry ${item.enquiryId.slice(-6)}` : ' ? Unlinked lead activity'}</span>
           </div>
         </div>
         <div className="hidden shrink-0 flex-col items-end sm:flex">
@@ -502,8 +502,8 @@ export default function FollowUpsPage() {
                 Scheduled follow-ups
               </CardTitle>
               <CardDescription>
-                Open follow-ups across your leads, grouped by urgency. Select a
-                row to open the lead.
+                Open follow-ups for your enquiries, grouped by urgency. Select a
+                row to open its enquiry or earlier lead record.
               </CardDescription>
             </div>
             {!isLoading && overdueCount > 0 ? (
@@ -534,7 +534,7 @@ export default function FollowUpsPage() {
                     </Button>
                   ) : (
                     <Button asChild variant="outline" size="sm">
-                      <Link to="/leads">Go to leads</Link>
+                      <Link to="/enquiries">Go to enquiries</Link>
                     </Button>
                   )
                 }
@@ -560,7 +560,7 @@ export default function FollowUpsPage() {
             </CardTitle>
             <CardDescription>
               Instructions issued to you that are not yet marked done. Select a
-              row to open the lead.
+              row to open its enquiry or earlier lead record.
             </CardDescription>
           </CardHeader>
 
@@ -571,10 +571,10 @@ export default function FollowUpsPage() {
               <EmptyState
                 icon={ClipboardList}
                 title="No open instructions"
-                description="You're all caught up — no pending instructions on your leads."
+                description="You're all caught up — no pending instructions on your enquiries."
                 action={
                   <Button asChild variant="outline" size="sm">
-                    <Link to="/leads">Go to leads</Link>
+                    <Link to="/enquiries">Go to enquiries</Link>
                   </Button>
                 }
               />
