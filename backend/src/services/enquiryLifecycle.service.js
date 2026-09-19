@@ -103,11 +103,27 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
   const value = functions.reduce((sum, fn) => sum + functionValue(fn), 0);
   const pax = functions.reduce((sum, fn) => sum + (Number(fn.pax) || 0), 0);
 
+  // Edits made while a document existed, listed in the stage they happened in.
+  const revisions = [...(enquiry.revisions || [])].sort((a, b) => new Date(a.at) - new Date(b.at));
+  const revisionText = (r) => {
+    const head =
+      r.document === 'proposal'
+        ? `Proposal revised to ${r.number}`
+        : r.document === 'contract'
+          ? `Contract ${r.number} and pro-forma refreshed`
+          : r.document === 'addendum'
+            ? `Addendum ${r.number} prepared`
+            : 'Details changed';
+    const what = (r.changes || []).join('; ');
+    return what ? `${head} — ${what}` : head;
+  };
+
   const events = (stage) => [
     ...history.filter((h) => h.stage === stage && h.trigger).map((h) => ({ at: h.at, text: h.trigger, byName: h.byName || '' })),
     ...emails
       .filter((m) => EMAIL_STAGE[m.kind] === stage)
       .map((m) => ({ at: m.at, text: `${EMAIL_LABELS[m.kind] || 'Email sent'}${m.to ? ` to ${m.to}` : ''}`, byName: m.byName || '' })),
+    ...revisions.filter((r) => r.stage === stage).map((r) => ({ at: r.at, text: revisionText(r), byName: r.byName || '' })),
   ].sort((a, b) => new Date(a.at) - new Date(b.at));
 
   const blocks = [];
@@ -159,6 +175,7 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       at: firstEntry('proposal')?.at || enquiry.proposal?.generatedAt,
       details: [
         ['Proposal number', enquiry.proposal?.number],
+        ['Revision', enquiry.proposal?.revision ? String(enquiry.proposal.revision) : ''],
         ['Generated on', when(enquiry.proposal?.generatedAt)],
         ['Emailed on', when(enquiry.proposal?.sentAt)],
         ['Emailed to', enquiry.proposal?.sentTo],

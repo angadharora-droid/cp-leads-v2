@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  BadgeIndianRupee,
   Ban,
   CalendarX2,
   CheckCircle2,
@@ -14,12 +13,10 @@ import {
   Hourglass,
   FileCheck2,
   FileDiff,
-  FileSignature,
   FileText,
   Mail,
   MoreHorizontal,
   Pencil,
-  ReceiptText,
   Trash2,
   Trophy,
   XCircle,
@@ -34,6 +31,7 @@ import {
   CANCEL_REASONS,
   CLOSED_STAGE_KEYS,
   LOST_REASONS,
+  editLabelFor,
   isDatePassed,
   lastEventDate,
 } from '@/lib/enquiryStages';
@@ -882,8 +880,8 @@ export function EnquiryActionBar({ enquiry, onChanged, onEdit, onDelete, showOpe
   const hasBanquet = enquiry.kind !== 'room';
   const hasProposal = Boolean(enquiry.proposal?.number);
   const hasContract = Boolean(enquiry.contract?.number);
-  const signed = Boolean(enquiry.signing?.signedAt);
   const closed = CLOSED_STAGE_KEYS.includes(stage);
+  const canLose = !['lost', 'cancelled'].includes(enquiry.stage) && (enquiry.stage !== 'won' || isAdmin);
   // A provisional or confirmed booking the client backs out of is cancelled, not lost.
   const cancellable = ['provisional', 'won'].includes(enquiry.stage);
   const busy = pending !== '';
@@ -933,18 +931,6 @@ export function EnquiryActionBar({ enquiry, onChanged, onEdit, onDelete, showOpe
         pendingAddendum ? 'Addendum regenerated' : 'Addendum made — email it with the revised pro-forma'
       );
       onChanged?.();
-    });
-
-  const preview = (key, path, name) => () =>
-    run(key, async () => {
-      const res = await api.get(`/enquiries/${enquiry._id}/${path}`, { responseType: 'blob' });
-      openBlob(res, name);
-    });
-
-  const download = (key, path, name) => () =>
-    run(key, async () => {
-      const res = await api.get(`/enquiries/${enquiry._id}/${path}`, { responseType: 'blob' });
-      saveBlob(res, name);
     });
 
   const primary = [];
@@ -997,6 +983,8 @@ export function EnquiryActionBar({ enquiry, onChanged, onEdit, onDelete, showOpe
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {/* Documents live in the Documents card and regenerate on every
+                edit, so the menu keeps only what has no other home. */}
             {showOpen ? (
               <DropdownMenuItem asChild>
                 <Link to={`/enquiries/${enquiry._id}`}>
@@ -1004,14 +992,9 @@ export function EnquiryActionBar({ enquiry, onChanged, onEdit, onDelete, showOpe
                 </Link>
               </DropdownMenuItem>
             ) : null}
-            {hasBanquet && !closed && stage === 'proposal' ? (
-              <DropdownMenuItem onClick={generateProposal}>
-                <FileText className="h-4 w-4" /> Regenerate proposal
-              </DropdownMenuItem>
-            ) : null}
-            {hasBanquet && !closed && !waitlisted && stage === 'proposal' && hasContract ? (
-              <DropdownMenuItem onClick={makeContract}>
-                <FileCheck2 className="h-4 w-4" /> Regenerate contract
+            {showOpen && !closed && onEdit ? (
+              <DropdownMenuItem onClick={() => onEdit(enquiry)}>
+                <Pencil className="h-4 w-4" /> {editLabelFor(enquiry)}
               </DropdownMenuItem>
             ) : null}
             {hasBanquet && stage === 'provisional' && !waitlisted ? (
@@ -1019,66 +1002,16 @@ export function EnquiryActionBar({ enquiry, onChanged, onEdit, onDelete, showOpe
                 <Mail className="h-4 w-4" /> Email contract again
               </DropdownMenuItem>
             ) : null}
-            {hasBanquet && stage === 'provisional' && !waitlisted && pendingAddendum ? (
-              <DropdownMenuItem onClick={makeAddendum}>
-                <FileDiff className="h-4 w-4" /> Regenerate addendum
-              </DropdownMenuItem>
-            ) : null}
-            {latestAddendum ? (
-              <DropdownMenuItem onClick={preview('pv-addendum', 'addendum/pdf', 'Addendum.pdf')}>
-                <Eye className="h-4 w-4" /> Preview addendum
-              </DropdownMenuItem>
-            ) : null}
-            {hasProposal ? (
-              <DropdownMenuItem onClick={preview('pv-proposal', 'proposal/pdf', 'Proposal.pdf')}>
-                <Eye className="h-4 w-4" /> Preview proposal
-              </DropdownMenuItem>
-            ) : null}
-            {hasContract ? (
-              <DropdownMenuItem onClick={preview('pv-contract', 'contract/pdf', 'Contract.pdf')}>
-                <Eye className="h-4 w-4" /> Preview contract
-              </DropdownMenuItem>
-            ) : null}
-            {signed ? (
-              <DropdownMenuItem onClick={preview('pv-signed', 'signed-pdf', 'Signed copy.pdf')}>
-                <FileSignature className="h-4 w-4" /> Preview signed copy
-              </DropdownMenuItem>
-            ) : null}
-            {enquiry.proforma?.fileId ? (
-              <DropdownMenuItem onClick={preview('pv-proforma', 'proforma-pdf', 'Pro-Forma Invoice.pdf')}>
-                <ReceiptText className="h-4 w-4" /> Preview pro-forma
-              </DropdownMenuItem>
-            ) : null}
-            {hasContract && (enquiry.credit?.pps || stage === 'provisional') ? (
-              <DropdownMenuItem onClick={preview('pv-credit', 'credit-form/pdf', 'Credit Application Form.pdf')}>
-                <BadgeIndianRupee className="h-4 w-4" /> Preview credit form
-              </DropdownMenuItem>
-            ) : null}
-            {hasProposal ? (
-              <DropdownMenuItem onClick={download('dl-proposal', 'proposal/pdf', 'Proposal.pdf')}>
-                <Download className="h-4 w-4" /> Download proposal
-              </DropdownMenuItem>
-            ) : null}
-            {hasContract ? (
-              <DropdownMenuItem onClick={download('dl-contract', 'contract/pdf', 'Contract.pdf')}>
-                <Download className="h-4 w-4" /> Download contract
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-            {!closed && onEdit ? (
-              <DropdownMenuItem onClick={() => onEdit(enquiry)}>
-                <Pencil className="h-4 w-4" /> Edit details
-              </DropdownMenuItem>
-            ) : null}
             <DropdownMenuItem onClick={() => setContactOpen(true)}>
               <Pencil className="h-4 w-4" /> Edit contact
             </DropdownMenuItem>
+            {cancellable || canLose || onDelete ? <DropdownMenuSeparator /> : null}
             {cancellable ? (
               <DropdownMenuItem onClick={() => setCancelOpen(true)} className="text-destructive">
                 <Ban className="h-4 w-4" /> Cancel booking
               </DropdownMenuItem>
             ) : null}
-            {!['lost', 'cancelled'].includes(enquiry.stage) && (enquiry.stage !== 'won' || isAdmin) ? (
+            {canLose ? (
               <DropdownMenuItem onClick={() => setLostOpen(true)} className="text-destructive">
                 <XCircle className="h-4 w-4" /> Mark lost
               </DropdownMenuItem>

@@ -815,10 +815,211 @@ export async function getEnquiry(enquiryId, actor) {
 
 // Once won or lost, only the contact and notes can still change — the dates,
 // venues and rates are what the client signed for (and what locks the slots).
+/* -------------------------------- Revisions -------------------------------- */
+
+// The printed fields outside the functions and rooms: a change to any of
+// them reissues the document too.
+const PRINTED_FIELDS = {
+  contactName: 'Contact name',
+  contactEmail: 'Contact email',
+  contactPhone: 'Contact phone',
+  billingName: 'Billing name',
+  gstNumber: 'GST number',
+  panNumber: 'PAN number',
+  paymentTerms: 'Payment terms',
+};
+
+function dayLabel(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+const FUNCTION_FIELDS = [
+  ['name', 'function', (v) => v],
+  ['date', 'date', dayLabel],
+  ['venue', 'venue', (v) => v],
+  ['sessions', 'sessions', (v) => v],
+  ['pax', 'pax', (v) => String(v || 0)],
+  ['menu', 'menu', (v) => v],
+  ['rate', 'rate', (v) => `Rs. ${inrPlain(v)}`],
+  ['extras', 'extras', (v) => v],
+  ['hallCharges', 'hall charges', (v) => v],
+  ['additionalRequirement', 'additional requirement', (v) => v],
+  ['total', 'total', (v) => `Rs. ${inrPlain(v)}`],
+];
+
+const ROOM_FIELDS = [
+  ['checkIn', 'check-in', dayLabel],
+  ['checkOut', 'check-out', dayLabel],
+  ['rooms', 'rooms', String],
+  ['notes', 'notes', String],
+];
+
+const sameText = (a, b) => String(a ?? '') === String(b ?? '');
+
+/** What the documents print, taken before and after an edit. */
+function captureForRevision(enquiry) {
+  const fields = {};
+  for (const key of Object.keys(PRINTED_FIELDS)) fields[key] = enquiry[key] || '';
+  return { snapshot: snapshotOf(enquiry), fields };
+}
+
+/**
+ * Human-readable lines for everything printed that changed. Functions pair
+ * up by id, and whatever is left on both sides pairs up in order, so a
+ * function re-saved under a new id still reads as a change, not a swap.
+ */
+function describeChanges(before, after) {
+  const lines = [];
+  const label = (fn) => [fn.name, fn.date ? dayLabel(fn.date) : ''].filter(Boolean).join(', ') || 'Function';
+  const key = (fn) => (fn.functionId ? String(fn.functionId) : '');
+  const prev = before.snapshot.functions || [];
+  const next = after.snapshot.functions || [];
+  const pairs = [];
+  for (const fn of next) {
+    const old = key(fn) ? prev.find((p) => key(p) === key(fn)) : null;
+    if (old) pairs.push([old, fn]);
+  }
+  const paired = new Set(pairs.flat());
+  const restOld = prev.filter((fn) => !paired.has(fn));
+  const restNew = next.filter((fn) => !paired.has(fn));
+  const inOrder = Math.min(restOld.length, restNew.length);
+  for (let i = 0; i < inOrder; i += 1) pairs.push([restOld[i], restNew[i]]);
+  for (const [old, fn] of pairs) {
+    const diffs = FUNCTION_FIELDS.filter(([field]) => !sameText(old[field], fn[field])).map(
+      ([field, name, show]) => `${name} ${show(old[field]) || '—'} → ${show(fn[field]) || '—'}`
+    );
+    if (diffs.length) lines.push(`${label(fn)}: ${diffs.join(', ')}`);
+  }
+  for (const fn of restNew.slice(inOrder)) lines.push(`Added ${label(fn)}`);
+  for (const fn of restOld.slice(inOrder)) lines.push(`Removed ${label(fn)}`);
+
+  const r0 = before.snapshot.room || null;
+  const r1 = after.snapshot.room || null;
+  if (!r0 && r1) lines.push('Rooms added');
+  else if (r0 && !r1) lines.push('Rooms removed');
+  else if (r0 && r1) {
+    const diffs = ROOM_FIELDS.filter(([field]) => !sameText(r0[field], r1[field])).map(
+      ([field, name, show]) => `${name} ${show(r0[field]) || '—'} → ${show(r1[field]) || '—'}`
+    );
+    if (diffs.length) lines.push(`Rooms: ${diffs.join(', ')}`);
+  }
+  for (const [field, name] of Object.entries(PRINTED_FIELDS)) {
+    if (!sameText(before.fields[field], after.fields[field])) {
+      lines.push(`${name} ${before.fields[field] || '—'} → ${after.fields[field] || '—'}`);
+    }
+  }
+  return lines;
+}
+
+/** The proposal's next issue: HCP.EP.000001.00 → .01 → .02 … */
+function bumpProposalRevision(enquiry) {
+  const number = enquiry.proposal?.number || '';
+  const m = number.match(/^(.*)\.(\d{2})$/);
+  const next = (Number(enquiry.proposal.revision) || (m ? parseInt(m[2], 10) : 0)) + 1;
+  enquiry.proposal.revision = next;
+  if (m) enquiry.proposal.number = `${m[1]}.${String(next).padStart(2, '0')}`;
+}
+
+/** The pending (unsent) addendum brought up to date, or a new one started. */
+async function upsertPendingAddendum(enquiry, current) {
+  let addendum = pendingAddendum(enquiry);
+  const first = !addendum;
+  if (addendum) {
+    addendum.after = current;
+    addendum.generatedAt = new Date();
+    addendum.effectiveDate = addendum.effectiveDate || addendum.generatedAt;
+  } else {
+    enquiry.addendums.push({
+      number: await nextAddendumNumber(),
+      generatedAt: new Date(),
+      effectiveDate: new Date(),
+      before: enquiry.agreed,
+      after: current,
+    });
+    addendum = latestAddendum(enquiry);
+  }
+  enquiry.addendumDue = true;
+  return { addendum, first };
+}
+
+/**
+ * After an edit that changed what the documents print: reissue the document
+ * the client holds and record the change for the life cycle.
+ *   contract emailed         → the addendum is made, or the pending one updated
+ *   contract made, not sent  → contract and pro-forma refresh under their numbers
+ *   proposal made            → the proposal moves to its next revision and
+ *                              needs emailing again
+ */
+async function recordRevision(enquiry, lead, actor, changes) {
+  let document = 'enquiry';
+  let number = '';
+  let firstAddendum = false;
+  if (enquiry.contract?.sentAt && enquiry.agreed?.at) {
+    const current = snapshotOf(enquiry);
+    if (!sameSnapshot(current, enquiry.agreed)) {
+      const result = await upsertPendingAddendum(enquiry, current);
+      document = 'addendum';
+      number = result.addendum.number;
+      firstAddendum = result.first;
+    } else {
+      // Back to what was agreed: a pending addendum has nothing left to say.
+      if (pendingAddendum(enquiry)) enquiry.addendums.pop();
+      enquiry.addendumDue = false;
+      document = 'contract';
+      number = enquiry.contract.number;
+    }
+  } else if (enquiry.contract?.number) {
+    enquiry.contract.generatedAt = new Date();
+    if (enquiry.proforma?.number) enquiry.proforma.generatedAt = new Date();
+    document = 'contract';
+    number = enquiry.contract.number;
+  } else if (enquiry.proposal?.number) {
+    bumpProposalRevision(enquiry);
+    enquiry.proposal.generatedAt = new Date();
+    enquiry.proposal.sentAt = undefined;
+    enquiry.proposal.sentTo = '';
+    enquiry.proposal.from = '';
+    document = 'proposal';
+    number = enquiry.proposal.number;
+  }
+  enquiry.revisions.push({
+    at: new Date(),
+    by: actor?.id,
+    byName: actorName(actor) || undefined,
+    stage: enquiry.stage,
+    document,
+    number,
+    changes,
+  });
+  await enquiry.save();
+  if (document === 'addendum' && firstAddendum) {
+    pushLeadHistory(lead, actor, 'enquiry_addendum', `Addendum ${number} to contract ${enquiry.contract.number} made`);
+    await lead.save();
+  }
+  return { document, number, changes };
+}
+
+function revisionSummary(revision) {
+  switch (revision.document) {
+    case 'proposal':
+      return `proposal revised to ${revision.number}`;
+    case 'contract':
+      return `contract ${revision.number} and pro-forma refreshed`;
+    case 'addendum':
+      return `addendum ${revision.number} prepared`;
+    default:
+      return 'details changed';
+  }
+}
+
 const CLOSED_EDITABLE = ['contactName', 'contactEmail', 'contactPhone', 'notes'];
 
 export async function updateEnquiry(enquiryId, body, actor, req) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
+  const before = captureForRevision(enquiry);
   if (['won', 'lost', 'cancelled'].includes(enquiry.stage)) {
     const locked = Object.keys(body).filter(
       (key) => body[key] !== undefined && !CLOSED_EDITABLE.includes(key)
@@ -872,23 +1073,22 @@ export async function updateEnquiry(enquiryId, body, actor, req) {
   await enquiry.save();
   if (freedSlots) await releaseWaitlist(freedSlots, enquiry._id);
   await enquiry.populate(FN_POPULATE);
-  // Once the contract is out, any change to what was agreed calls for an addendum.
-  if (enquiry.contract?.sentAt && enquiry.agreed?.at && (body.functions || body.room !== undefined)) {
-    const due = !sameSnapshot(snapshotOf(enquiry), enquiry.agreed);
-    if (due !== enquiry.addendumDue) {
-      enquiry.addendumDue = due;
-      await enquiry.save();
-    }
-  }
+  // Anything printed that changed reissues the document the client holds
+  // and is recorded for the life cycle.
+  const changes = describeChanges(before, captureForRevision(enquiry));
+  const revision = changes.length ? await recordRevision(enquiry, lead, actor, changes) : null;
   await writeAudit({
     req,
     actor,
     action: 'enquiry.update',
     entityType: 'Enquiry',
     entityId: enquiry._id,
-    summary: `Enquiry updated (lead ${lead.reference})`,
+    summary:
+      revision && revision.document !== 'enquiry'
+        ? `Enquiry updated — ${revisionSummary(revision)} (lead ${lead.reference})`
+        : `Enquiry updated (lead ${lead.reference})`,
   });
-  return enquiry;
+  return { enquiry, revision };
 }
 
 export async function deleteEnquiry(enquiryId, actor, req) {
@@ -1321,23 +1521,7 @@ export async function generateAddendum(enquiryId, actor, req) {
   if (sameSnapshot(current, enquiry.agreed)) {
     throw new AppError('Nothing has changed since the contract or the last addendum was emailed', 409, 'NO_CHANGES');
   }
-  let addendum = pendingAddendum(enquiry);
-  const first = !addendum;
-  if (addendum) {
-    addendum.after = current;
-    addendum.generatedAt = new Date();
-    addendum.effectiveDate = addendum.effectiveDate || addendum.generatedAt;
-  } else {
-    enquiry.addendums.push({
-      number: await nextAddendumNumber(),
-      generatedAt: new Date(),
-      effectiveDate: new Date(),
-      before: enquiry.agreed,
-      after: current,
-    });
-    addendum = latestAddendum(enquiry);
-  }
-  enquiry.addendumDue = true;
+  const { addendum, first } = await upsertPendingAddendum(enquiry, current);
   await enquiry.save();
   const pdf = await buildAddendumPdf(enquiry, lead, addendum, { preparedBy: preparedBy(actor, enquiry) });
   if (first) {

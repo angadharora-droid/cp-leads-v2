@@ -24,7 +24,7 @@ import {
 
 import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { ENQUIRY_STAGES, CLOSED_STAGE_KEYS, stageInfo, advanceModeLabel, advanceOutcomeLabel } from '@/lib/enquiryStages';
+import { ENQUIRY_STAGES, CLOSED_STAGE_KEYS, stageInfo, advanceModeLabel, advanceOutcomeLabel, editLabelFor } from '@/lib/enquiryStages';
 import { departmentLabel, isIndividual } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
@@ -331,7 +331,7 @@ export default function EnquiryPage() {
             {!closed ? (
               <Button variant="outline" size="sm" onClick={() => openEdit()}>
                 <Pencil className="h-4 w-4" />
-                Edit details
+                {editLabelFor(enquiry)}
               </Button>
             ) : null}
             <EnquiryActionBar
@@ -504,6 +504,7 @@ export default function EnquiryPage() {
                 generatedAt={enquiry.proposal?.generatedAt}
                 sentAt={enquiry.proposal?.sentAt}
                 sentTo={enquiry.proposal?.sentTo}
+                extra={enquiry.proposal?.revision ? `Revision ${enquiry.proposal.revision} — reissued after an edit` : ''}
                 onPreview={preview('proposal', 'proposal/pdf', 'Proposal.pdf')}
                 onDownload={enquiry.proposal?.number ? download('proposal', 'proposal/pdf', 'Proposal.pdf') : null}
                 downloading={downloading === 'proposal'}
@@ -706,6 +707,7 @@ export default function EnquiryPage() {
         config={config}
         focusFunction={focusFn}
         readOnly={closed}
+        title={editLabelFor(enquiry)}
         onSaved={() => load({ silent: true })}
       />
       <ConfirmDialog
