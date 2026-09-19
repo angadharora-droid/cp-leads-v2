@@ -6,85 +6,85 @@ import * as activityService from '../services/leadActivity.service.js';
 
 export const addNote = asyncHandler(async (req, res) => {
   const lead = await activityService.addNote(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.body.body,
     req.user,
     req
   );
-  return sendOk(res, { lead }, 201);
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead }, 201);
 });
 
 export const editNote = asyncHandler(async (req, res) => {
   const lead = await activityService.editNote(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.params.noteId,
     req.body.body,
     req.user,
     req
   );
-  return sendOk(res, { lead });
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead });
 });
 
 export const deleteNote = asyncHandler(async (req, res) => {
   const lead = await activityService.deleteNote(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.params.noteId,
     req.user,
     req
   );
-  return sendOk(res, { lead });
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead });
 });
 
 /* ------------------------- Action points ------------------------- */
 
 export const addActionPoint = asyncHandler(async (req, res) => {
   const lead = await activityService.addActionPoint(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.body.text,
     req.user,
     req
   );
-  return sendOk(res, { lead }, 201);
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead }, 201);
 });
 
 export const clearActionPoint = asyncHandler(async (req, res) => {
   const lead = await activityService.clearActionPoint(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.params.apId,
     req.user,
     req
   );
-  return sendOk(res, { lead });
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead });
 });
 
 /* --------------------------- Follow-ups -------------------------- */
 
 export const scheduleFollowUp = asyncHandler(async (req, res) => {
   const lead = await activityService.scheduleFollowUp(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     { dueDate: req.body.dueDate, note: req.body.note },
     req.user,
     req
   );
-  return sendOk(res, { lead }, 201);
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead }, 201);
 });
 
 export const closeFollowUp = asyncHandler(async (req, res) => {
   const lead = await activityService.closeFollowUp(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.params.fuId,
     req.body.closingNote,
     req.user,
     req
   );
-  return sendOk(res, { lead });
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead });
 });
 
 /* ------------------------- Visit reports ------------------------- */
 
 export const addVisitReport = asyncHandler(async (req, res) => {
   const lead = await activityService.addVisitReport(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     {
       visitDate: req.body.visitDate,
       note: req.body.note,
@@ -95,29 +95,29 @@ export const addVisitReport = asyncHandler(async (req, res) => {
     req.user,
     req
   );
-  return sendOk(res, { lead }, 201);
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead }, 201);
 });
 
 /* -------------------------- Instructions ------------------------- */
 
 export const issueInstruction = asyncHandler(async (req, res) => {
   const lead = await activityService.issueInstruction(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.body.text,
     req.user,
     req
   );
-  return sendOk(res, { lead }, 201);
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead }, 201);
 });
 
 export const completeInstruction = asyncHandler(async (req, res) => {
   const lead = await activityService.completeInstruction(
-    req.params.id,
+    req.params.enquiryId ? { enquiryId: req.params.enquiryId } : req.params.id,
     req.params.insId,
     req.user,
     req
   );
-  return sendOk(res, { lead });
+  return sendOk(res, req.params.enquiryId ? { activity: lead } : { lead });
 });
 
 export default {

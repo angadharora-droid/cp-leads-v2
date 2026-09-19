@@ -77,6 +77,7 @@ export async function getMyFollowUps(currentUser) {
     for (const fu of lead.followUps || []) {
       followUps.push({
         leadId,
+        enquiryId: fu.enquiry ? String(fu.enquiry) : null,
         followUpId: fu._id ? String(fu._id) : null,
         reference,
         businessName,
@@ -90,6 +91,7 @@ export async function getMyFollowUps(currentUser) {
     for (const ins of lead.instructions || []) {
       instructions.push({
         leadId,
+        enquiryId: ins.enquiry ? String(ins.enquiry) : null,
         instructionId: ins._id ? String(ins._id) : null,
         reference,
         businessName,

@@ -833,7 +833,7 @@ function buildDocument(enquiry, lead, content, { kind, chip, images = {} }) {
   const definition = sheetDocument({
     title: title.toUpperCase(),
     subtitle: [number, lead?.businessName].filter(Boolean).join('  ·  '),
-    chip,
+    chip: chip || `Version ${doc?.version || 1}`,
     content,
     fontSize: BODY_SIZE,
     footer: {
@@ -858,7 +858,7 @@ export async function buildEnquiryProposalPdf(enquiry, lead, options = {}) {
   const content = await documentContent(enquiry, lead, { kind: 'proposal', preparedBy, sessionTimings: options.sessionTimings });
   return {
     buffer: await renderToBuffer(buildDocument(enquiry, lead, content, { kind: 'proposal' })),
-    filename: `Proposal ${safeName(enquiry.proposal?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
+    filename: `Proposal ${safeName(enquiry.proposal?.number, '')} v${enquiry.proposal?.version || 1} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
     contentType: 'application/pdf',
   };
 }
@@ -869,7 +869,7 @@ export async function buildContractPdf(enquiry, lead, options = {}) {
   const content = await documentContent(enquiry, lead, { kind: 'contract', preparedBy, sessionTimings: options.sessionTimings });
   return {
     buffer: await renderToBuffer(buildDocument(enquiry, lead, content, { kind: 'contract' })),
-    filename: `Contract ${safeName(enquiry.contract?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
+    filename: `Contract ${safeName(enquiry.contract?.number, '')} v${enquiry.contract?.version || 1} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
     contentType: 'application/pdf',
   };
 }

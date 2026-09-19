@@ -19,6 +19,8 @@ import { buildEnquiryProposalPdf, buildContractPdf, buildSignedDocumentPdf, sess
 import { buildProformaPdf, buildAddendumPdf, addendumChanges, buildCreditFormPdf } from './enquiryPdf.service.js';
 import { messagesFor, MESSAGE_KINDS } from './enquiryMessages.js';
 import env from '../config/env.js';
+import { ACTIVITY_FIELDS, activityFor, assignSingleEnquiryActivity } from './enquiryActivityScope.service.js';
+import { VERSIONED_DOCUMENTS, currentDocumentVersion, numberedIssues, withDocumentVersions } from './documentVersions.js';
 
 // Document references: HCP.EP.000001.00 (proposal), HCP.EC.00001 (contract),
 // HCP.PI.00001 (pro-forma invoice) — as printed on the house templates.
@@ -808,12 +810,15 @@ export async function listBoard(query, actor) {
 }
 
 export async function getEnquiry(enquiryId, actor) {
-  const { enquiry } = await loadEnquiryScoped(enquiryId, actor);
-  await enquiry.populate(
-    'lead',
-    'businessName reference contactPerson email mobile leadType departments'
-  );
-  return enquiry;
+  const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
+  const activityLead = await assignSingleEnquiryActivity(lead);
+  const { notes, ...activity } = activityFor(activityLead, enquiryId);
+  await enquiry.populate({
+    path: 'lead',
+    select: 'businessName reference contactPerson email mobile leadType departments assignedTo',
+    populate: { path: 'assignedTo', select: 'name email' },
+  });
+  return { ...withDocumentVersions(enquiry), ...activity, activityNotes: notes };
 }
 
 // Once won or lost, only the contact and notes can still change — the dates,
@@ -901,10 +906,11 @@ function printSnapshot(enquiry) {
       additionalRequirement: fn.additionalRequirement,
     })),
     room: plain.room,
+    advance: plain.advance,
     ...pick(plain, ['contactName', 'contactEmail', 'contactPhone', 'billingName', 'gstNumber', 'panNumber', 'paymentTerms', 'createdByName']),
-    proposal: pick(plain.proposal || {}, ['number', 'revision', 'generatedAt']),
-    contract: pick(plain.contract || {}, ['number', 'generatedAt']),
-    proforma: pick(plain.proforma || {}, ['number']),
+    proposal: pick(plain.proposal || {}, ['number', 'version', 'revision', 'generatedAt']),
+    contract: pick(plain.contract || {}, ['number', 'version', 'generatedAt']),
+    proforma: pick(plain.proforma || {}, ['number', 'version', 'generatedAt']),
   };
 }
 
@@ -912,7 +918,7 @@ function printSnapshot(enquiry) {
 async function documentPrint(enquiry, lead, actor) {
   return JSON.parse(JSON.stringify({
     ...printSnapshot(enquiry),
-    lead: { businessName: lead.businessName, mobile: lead.mobile, email: lead.email },
+    lead: { businessName: lead.businessName, mobile: lead.mobile, email: lead.email, contactPerson: lead.contactPerson, address: lead.address, city: lead.city },
     preparedBy: preparedBy(actor, enquiry),
     sessionTimings: await sessionTimingLines(),
   }));
@@ -922,7 +928,10 @@ async function buildIssuedPdf(enquiry, lead, actor, document) {
   const stored = await Enquiry.findById(enquiry._id).select('documentPrints').lean();
   const saved = stored?.documentPrints?.[document];
   const print = saved || await documentPrint(enquiry, lead, actor);
-  const build = document === 'contract' ? buildContractPdf : buildEnquiryProposalPdf;
+  const version = currentDocumentVersion(enquiry, document);
+  enquiry[document].version = version;
+  print[document] = { ...print[document], version };
+  const build = document === 'proforma' ? buildProformaPdf : document === 'contract' ? buildContractPdf : buildEnquiryProposalPdf;
   const pdf = await build(print, print.lead, print);
   if (!saved) {
     await Enquiry.updateOne(
@@ -1034,6 +1043,7 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
   // The issue the client may hold, before this edit rewrites it.
   const issueOf = (kind, doc) => ({
     document: kind,
+    version: currentDocumentVersion(enquiry, kind),
     number: doc.number,
     revision: doc.revision || 0,
     generatedAt: doc.generatedAt,
@@ -1041,9 +1051,10 @@ async function recordRevision(enquiry, lead, actor, changes, before, after) {
     sentTo: doc.sentTo || '',
   });
   // Both PDFs read the enquiry's details, even once a contract exists.
-  const superseded = ['proposal', 'contract']
+  const superseded = VERSIONED_DOCUMENTS
     .filter((kind) => enquiry[kind]?.number)
     .map((kind) => issueOf(kind, enquiry[kind]));
+  for (const issue of superseded) enquiry[issue.document].version = issue.version + 1;
   const total = (capture, field) => (capture?.snapshot?.functions || []).reduce((sum, fn) => sum + (Number(fn[field]) || 0), 0);
   if (enquiry.contract?.sentAt && enquiry.agreed?.at) {
     const current = snapshotOf(enquiry);
@@ -1215,6 +1226,9 @@ export async function deleteEnquiry(enquiryId, actor, req) {
   }
   const freedSlots = enquiry.functions.map((fn) => (fn.toObject ? fn.toObject() : fn));
   await enquiry.deleteOne();
+  await Lead.updateOne({ _id: lead._id }, {
+    $pull: Object.fromEntries(ACTIVITY_FIELDS.map((field) => [field, { enquiry: enquiry._id }])),
+  });
   await releaseWaitlist(freedSlots, enquiryId);
   pushLeadHistory(lead, actor, 'enquiry_deleted', 'Enquiry deleted');
   await lead.save();
@@ -1525,16 +1539,19 @@ export async function getIssuePdf(enquiryId, index, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
   const n = /^\d+$/.test(String(index)) ? Number(index) : NaN;
   const stored = Number.isSafeInteger(n) ? await Enquiry.findById(enquiry._id).select('+issues.print').lean() : null;
-  const issue = stored?.issues?.[n];
+  const issue = numberedIssues(stored?.issues)[n];
   if (!issue?.print) throw new AppError('That issue is not on record', 404, 'NOT_FOUND');
   const printed = { ...issue.print, _id: enquiry._id, createdByName: issue.print.createdByName || enquiry.createdByName };
+  printed[issue.document] = { ...printed[issue.document], version: issue.version };
   const options = {
     preparedBy: issue.print.preparedBy || preparedBy(null, printed),
     sessionTimings: issue.print.sessionTimings,
   };
   const printedLead = issue.print.lead || lead;
   const built =
-    issue.document === 'contract'
+    issue.document === 'proforma'
+      ? await buildProformaPdf(printed, printedLead, options)
+      : issue.document === 'contract'
       ? await buildContractPdf(printed, printedLead, options)
       : await buildEnquiryProposalPdf(printed, printedLead, options);
   return { ...built, filename: built.filename.replace(/\.pdf$/i, ' (superseded).pdf') };
@@ -1566,7 +1583,7 @@ export async function emailContract(enquiryId, payload, actor, req) {
   await ensureProformaNumber(enquiry);
   enquiry.proforma.generatedAt = enquiry.proforma.generatedAt || new Date();
   const pdf = await buildIssuedPdf(enquiry, lead, actor, 'contract');
-  const pfi = await buildProformaPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pfi = await buildIssuedPdf(enquiry, lead, actor, 'proforma');
 
   // A fresh sign link on every send; the previous link stops working.
   const { token, tokenHash, expiresAt } = newSignToken();
@@ -1590,8 +1607,8 @@ export async function emailContract(enquiryId, payload, actor, req) {
     sender,
   });
 
-  // Keep the pro-forma copy that was actually sent.
-  enquiry.proforma.fileId = await uploadBufferToGridFS(pfi.buffer, pfi.filename, pfi.contentType);
+  // Its JSON print snapshot keeps the copy that was sent; no PDF file is stored.
+  enquiry.proforma.fileId = undefined;
   enquiry.proforma.sentAt = new Date();
   enquiry.proforma.sentTo = to;
   enquiry.proforma.from = sender.fromAddress;
@@ -1601,6 +1618,7 @@ export async function emailContract(enquiryId, payload, actor, req) {
   enquiry.addendumDue = false;
 
   enquiry.signing.document = 'contract';
+  enquiry.signing.documentVersion = currentDocumentVersion(enquiry, 'contract');
   enquiry.signing.tokenHash = tokenHash;
   enquiry.signing.tokenExpiresAt = expiresAt;
   enquiry.signing.otpHash = undefined;
@@ -1728,7 +1746,7 @@ export async function emailAddendum(enquiryId, payload, actor, req) {
     throw new AppError('Nothing has changed since the contract or the last addendum was emailed', 409, 'NO_CHANGES');
   }
   const pdf = await buildAddendumPdf(enquiry, lead, addendum, { preparedBy: preparedBy(actor, enquiry) });
-  const pfi = await buildProformaPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  const pfi = await buildIssuedPdf(enquiry, lead, actor, 'proforma');
 
   const { token, tokenHash, expiresAt } = newSignToken();
   const signUrl = `${env.CLIENT_ORIGIN.replace(/\/$/, '')}/sign/${token}`;
@@ -1754,12 +1772,13 @@ export async function emailAddendum(enquiryId, payload, actor, req) {
   addendum.sentAt = new Date();
   addendum.sentTo = to;
   addendum.from = sender.fromAddress;
-  enquiry.proforma.fileId = await uploadBufferToGridFS(pfi.buffer, pfi.filename, pfi.contentType);
+  enquiry.proforma.fileId = undefined;
   enquiry.proforma.sentAt = new Date();
   enquiry.proforma.sentTo = to;
   enquiry.proforma.from = sender.fromAddress;
   enquiry.proforma.error = '';
   enquiry.signing.document = 'addendum';
+  enquiry.signing.documentVersion = 1;
   enquiry.signing.tokenHash = tokenHash;
   enquiry.signing.tokenExpiresAt = expiresAt;
   enquiry.signing.otpHash = undefined;
@@ -2031,7 +2050,7 @@ export async function previewProforma(enquiryId, actor) {
     enquiry.proforma.generatedAt = new Date();
     await enquiry.save();
   }
-  return buildProformaPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+  return buildIssuedPdf(enquiry, lead, actor, 'proforma');
 }
 
 /* ----------------------------- Won / Lost / files -------------------------- */
@@ -2043,6 +2062,7 @@ export async function previewProforma(enquiryId, actor) {
  */
 export async function markWon(enquiryId, payload, actor, req) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
+  const beforeAdvance = printSnapshot(enquiry);
   if (enquiry.stage === 'won') return enquiry;
   if (enquiry.stage !== 'provisional') {
     throw new AppError(
@@ -2084,6 +2104,27 @@ export async function markWon(enquiryId, payload, actor, req) {
       409,
       'SLOT_CONFIRMED'
     );
+  }
+
+  // Receiving an advance changes the invoice balance, so keep its previous
+  // version and let the next preview build the revised invoice from JSON.
+  if (basis === 'advance' && enquiry.proforma?.number) {
+    const stored = await Enquiry.findById(enquiry._id).select('documentPrints').lean();
+    const version = currentDocumentVersion(enquiry, 'proforma');
+    const issue = {
+      document: 'proforma', version, number: enquiry.proforma.number,
+      generatedAt: enquiry.proforma.generatedAt, sentAt: enquiry.proforma.sentAt,
+      sentTo: enquiry.proforma.sentTo, supersededAt: new Date(), supersededByName: actorName(actor),
+      print: stored?.documentPrints?.proforma || await documentPrint(beforeAdvance, lead, null),
+    };
+    await Enquiry.updateOne({ _id: enquiry._id }, {
+      $push: { issues: { $each: [issue] } }, $unset: { 'documentPrints.proforma': 1 },
+    });
+    const { print, ...metadata } = issue;
+    enquiry.issues.push(metadata);
+    enquiry.unmarkModified('issues');
+    enquiry.proforma.version = version + 1;
+    enquiry.proforma.generatedAt = new Date();
   }
 
   enquiry.won.at = new Date();
@@ -2236,13 +2277,10 @@ export async function getSignedPdf(enquiryId, actor) {
 
 export async function getProformaPdf(enquiryId, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
-  if (!enquiry.proforma?.fileId) {
+  if (!enquiry.proforma?.number) {
     throw new AppError('No pro-forma invoice yet', 404, 'NOT_FOUND');
   }
-  return {
-    stream: streamGridFile(enquiry.proforma.fileId),
-    filename: `Pro-Forma Invoice ${enquiry.proforma.number} - ${lead.businessName}.pdf`,
-  };
+  return buildIssuedPdf(enquiry, lead, actor, 'proforma');
 }
 
 /** One-time credit application form, pre-filled for this event (PPS bookings). */

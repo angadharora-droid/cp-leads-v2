@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import ActivityPanel from '@/components/enquiries/ActivityPanel';
 import { cn } from '@/lib/utils';
 import { ENQUIRY_STAGES, CLOSED_STAGE_KEYS, stageInfo, advanceModeLabel, advanceOutcomeLabel, editLabelFor } from '@/lib/enquiryStages';
 import { departmentLabel, isIndividual } from '@/lib/departments';
@@ -122,7 +124,7 @@ function Row({ label, children }) {
 }
 
 /** One document line: number, generated / sent dates, preview + download. */
-function DocumentRow({ icon: Icon, title, number, generatedAt, sentAt, sentTo, extra, onPreview, onDownload, downloading }) {
+function DocumentRow({ icon: Icon, title, version = 1, number, generatedAt, sentAt, sentTo, extra, onPreview, onDownload, downloading }) {
   const available = Boolean(number || onDownload);
   return (
     <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border px-3 py-2">
@@ -133,6 +135,7 @@ function DocumentRow({ icon: Icon, title, number, generatedAt, sentAt, sentTo, e
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground">
             {title}
+            {available && version ? <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">Version {version}</span> : null}
             {number ? <span className="ml-2 font-normal text-muted-foreground">{number}</span> : null}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -170,7 +173,7 @@ function DocumentRow({ icon: Icon, title, number, generatedAt, sentAt, sentTo, e
 function EarlierIssues({ issues, document, icon, preview, download, downloading }) {
   const earlier = (issues || []).map((issue, index) => ({ issue, index })).filter(({ issue }) => issue.document === document).reverse();
   if (!earlier.length) return null;
-  const noun = document === 'contract' ? 'Contract' : 'Proposal';
+  const noun = { proposal: 'Proposal', contract: 'Contract', proforma: 'Pro-forma invoice' }[document];
   return (
     <details className="rounded-lg border bg-muted/20 px-3 py-2">
       <summary className="cursor-pointer text-sm font-medium">
@@ -179,12 +182,13 @@ function EarlierIssues({ issues, document, icon, preview, download, downloading 
       <div className="mt-3 space-y-2">
         {earlier.map(({ issue, index }) => {
           const key = `issue-${index}`;
-          const name = `${noun} ${issue.number} (superseded).pdf`;
+          const name = `${noun} ${issue.number} v${issue.version} (superseded).pdf`;
           return (
             <DocumentRow
               key={key}
               icon={icon}
               title={`Previous ${noun.toLowerCase()}`}
+              version={issue.version}
               number={issue.number}
               generatedAt={issue.generatedAt}
               sentAt={issue.sentAt}
@@ -208,6 +212,7 @@ function EarlierIssues({ issues, document, icon, preview, download, downloading 
  * stage history. Opens for every enquiry, Won and Lost included.
  */
 export default function EnquiryPage() {
+  const { user } = useAuth();
   const { enquiryId } = useParams();
   const navigate = useNavigate();
   const [enquiry, setEnquiry] = useState(null);
@@ -278,6 +283,13 @@ export default function EnquiryPage() {
   };
   const download = (key, path, name) => fetchPdf(key, path, name, false);
   const preview = (key, path, name) => fetchPdf(key, path, name, true);
+
+  const mutateActivity = async (promise, successMessage) => {
+    const res = await promise;
+    const activity = res?.data?.data?.activity;
+    if (activity) setEnquiry((previous) => ({ ...previous, ...activity }));
+    if (successMessage) toast.success(successMessage);
+  };
 
   if (loading) {
     return (
@@ -581,107 +593,18 @@ export default function EnquiryPage() {
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 text-primary" />
-                Documents
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <DocumentRow
-                icon={FileText}
-                title="Proposal"
-                number={enquiry.proposal?.number}
-                generatedAt={enquiry.proposal?.generatedAt}
-                sentAt={enquiry.proposal?.sentAt}
-                sentTo={enquiry.proposal?.sentTo}
-                extra={enquiry.proposal?.revision ? `Revision ${enquiry.proposal.revision} — reissued after an edit` : ''}
-                onPreview={preview('proposal', 'proposal/pdf', 'Proposal.pdf')}
-                onDownload={enquiry.proposal?.number ? download('proposal', 'proposal/pdf', 'Proposal.pdf') : null}
-                downloading={downloading === 'proposal'}
-              />
-              <EarlierIssues issues={enquiry.issues} document="proposal" icon={FileText} preview={preview} download={download} downloading={downloading} />
-              <DocumentRow
-                icon={FileCheck2}
-                title="Contract"
-                number={enquiry.contract?.number}
-                generatedAt={enquiry.contract?.generatedAt}
-                sentAt={enquiry.contract?.sentAt}
-                sentTo={enquiry.contract?.sentTo}
-                onPreview={preview('contract', 'contract/pdf', 'Contract.pdf')}
-                onDownload={enquiry.contract?.number ? download('contract', 'contract/pdf', 'Contract.pdf') : null}
-                downloading={downloading === 'contract'}
-              />
-              <EarlierIssues issues={enquiry.issues} document="contract" icon={FileCheck2} preview={preview} download={download} downloading={downloading} />
-              <DocumentRow
-                icon={FileSignature}
-                title="Signed copy"
-                number={enquiry.signing?.signedAt ? (enquiry.signing.document === 'contract' ? enquiry.contract?.number : enquiry.proposal?.number) : ''}
-                generatedAt={enquiry.signing?.signedAt}
-                extra={enquiry.signing?.signedAt ? `Signed digitally by ${enquiry.signing.signerName} on ${formatDateTime(enquiry.signing.signedAt)}` : ''}
-                onPreview={preview('signed', 'signed-pdf', 'Signed copy.pdf')}
-                onDownload={enquiry.signing?.signedPdfFileId ? download('signed', 'signed-pdf', 'Signed copy.pdf') : null}
-                downloading={downloading === 'signed'}
-              />
-              <DocumentRow
-                icon={ReceiptText}
-                title="Pro-forma invoice"
-                number={enquiry.proforma?.number}
-                generatedAt={enquiry.proforma?.generatedAt}
-                sentAt={enquiry.proforma?.sentAt}
-                sentTo={enquiry.proforma?.sentTo}
-                onPreview={preview('proforma', 'proforma-pdf', 'Pro-Forma Invoice.pdf')}
-                onDownload={enquiry.proforma?.fileId ? download('proforma', 'proforma-pdf', 'Pro-Forma Invoice.pdf') : null}
-                downloading={downloading === 'proforma'}
-              />
-              {(enquiry.addendums || []).map((addendum, i) => {
-                const key = `addendum-${i}`;
-                const path = `addendums/${encodeURIComponent(addendum.number)}/pdf`;
-                const signedPath = `addendums/${encodeURIComponent(addendum.number)}/signed-pdf`;
-                return (
-                  <div key={key} className="space-y-2">
-                    <DocumentRow
-                      icon={FileDiff}
-                      title={`Addendum ${i + 1}`}
-                      number={addendum.number}
-                      generatedAt={addendum.generatedAt}
-                      sentAt={addendum.sentAt}
-                      sentTo={addendum.sentTo}
-                      extra={addendum.sentAt ? 'Sent with the revised pro-forma' : 'Not emailed yet — the revised pro-forma goes with it'}
-                      onPreview={preview(key, path, `Addendum ${addendum.number}.pdf`)}
-                      onDownload={addendum.number ? download(key, path, `Addendum ${addendum.number}.pdf`) : null}
-                      downloading={downloading === key}
-                    />
-                    {addendum.signing?.signedAt ? (
-                      <DocumentRow
-                        icon={FileSignature}
-                        title={`Signed addendum ${i + 1}`}
-                        number={addendum.number}
-                        generatedAt={addendum.signing.signedAt}
-                        extra={`Signed digitally by ${addendum.signing.signerName} on ${formatDateTime(addendum.signing.signedAt)}`}
-                        onPreview={preview(`${key}-signed`, signedPath, `Signed Addendum ${addendum.number}.pdf`)}
-                        onDownload={addendum.signing.signedPdfFileId ? download(`${key}-signed`, signedPath, `Signed Addendum ${addendum.number}.pdf`) : null}
-                        downloading={downloading === `${key}-signed`}
-                      />
-                    ) : null}
-                  </div>
-                );
-              })}
-              {enquiry.credit?.pps || enquiry.credit?.formGeneratedAt ? (
-                <DocumentRow
-                  icon={BadgeIndianRupee}
-                  title="Credit application form"
-                  number={enquiry.contract?.number}
-                  generatedAt={enquiry.credit?.formGeneratedAt}
-                  extra="One-time credit (PPS)"
-                  onPreview={preview('credit', 'credit-form/pdf', 'Credit Application Form.pdf')}
-                  onDownload={download('credit', 'credit-form/pdf', 'Credit Application Form.pdf')}
-                  downloading={downloading === 'credit'}
-                />
-              ) : null}
-            </CardContent>
-          </Card>
+          <ActivityPanel
+            key={enquiry._id}
+            record={{ ...enquiry, notes: enquiry.activityNotes || [], mobile: enquiry.contactPhone, email: enquiry.contactEmail, assignedTo: lead.assignedTo }}
+            apiBase={`/enquiries/${enquiry._id}`}
+            mutate={mutateActivity}
+            isAdmin={user?.role === 'admin'}
+            isAssignedExec={String(lead.assignedTo?._id || lead.assignedTo || '') === String(user?.id || user?._id || '')}
+            myId={user?.id || user?._id}
+          />
+          <Button variant="outline" className="w-full" onClick={() => setLifecycleOpen(true)}>
+            <Route className="h-4 w-4" /> Life cycle & document versions
+          </Button>
 
           <Card>
             <CardHeader className="pb-3">
@@ -769,7 +692,117 @@ export default function EnquiryPage() {
             </SidePanelDescription>
           </SidePanelHeader>
           <SidePanelBody>
-            {lifecycleOpen ? <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} bare /> : null}
+            {lifecycleOpen ? (
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <FileText className="h-4 w-4 text-primary" />
+                      Documents and versions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <DocumentRow
+                      icon={FileText}
+                      title="Proposal"
+                      version={enquiry.proposal?.version || 1}
+                      number={enquiry.proposal?.number}
+                      generatedAt={enquiry.proposal?.generatedAt}
+                      sentAt={enquiry.proposal?.sentAt}
+                      sentTo={enquiry.proposal?.sentTo}
+                      extra={enquiry.proposal?.revision ? `Revision ${enquiry.proposal.revision} — reissued after an edit` : ''}
+                      onPreview={preview('proposal', 'proposal/pdf', 'Proposal.pdf')}
+                      onDownload={enquiry.proposal?.number ? download('proposal', 'proposal/pdf', 'Proposal.pdf') : null}
+                      downloading={downloading === 'proposal'}
+                    />
+                    <DocumentRow
+                      icon={FileCheck2}
+                      title="Contract"
+                      version={enquiry.contract?.version || 1}
+                      number={enquiry.contract?.number}
+                      generatedAt={enquiry.contract?.generatedAt}
+                      sentAt={enquiry.contract?.sentAt}
+                      sentTo={enquiry.contract?.sentTo}
+                      onPreview={preview('contract', 'contract/pdf', 'Contract.pdf')}
+                      onDownload={enquiry.contract?.number ? download('contract', 'contract/pdf', 'Contract.pdf') : null}
+                      downloading={downloading === 'contract'}
+                    />
+                    <DocumentRow
+                      icon={FileSignature}
+                      title="Signed copy"
+                      version={enquiry.signing?.documentVersion || 1}
+                      number={enquiry.signing?.signedAt ? (enquiry.signing.document === 'contract' ? enquiry.contract?.number : enquiry.proposal?.number) : ''}
+                      generatedAt={enquiry.signing?.signedAt}
+                      extra={enquiry.signing?.signedAt ? `Signed digitally by ${enquiry.signing.signerName} on ${formatDateTime(enquiry.signing.signedAt)}` : ''}
+                      onPreview={preview('signed', 'signed-pdf', 'Signed copy.pdf')}
+                      onDownload={enquiry.signing?.signedPdfFileId ? download('signed', 'signed-pdf', 'Signed copy.pdf') : null}
+                      downloading={downloading === 'signed'}
+                    />
+                    <DocumentRow
+                      icon={ReceiptText}
+                      title="Pro-forma invoice"
+                      version={enquiry.proforma?.version || 1}
+                      number={enquiry.proforma?.number}
+                      generatedAt={enquiry.proforma?.generatedAt}
+                      sentAt={enquiry.proforma?.sentAt}
+                      sentTo={enquiry.proforma?.sentTo}
+                      onPreview={preview('proforma', 'proforma-pdf', 'Pro-Forma Invoice.pdf')}
+                      onDownload={enquiry.proforma?.number ? download('proforma', 'proforma-pdf', 'Pro-Forma Invoice.pdf') : null}
+                      downloading={downloading === 'proforma'}
+                    />
+                    {(enquiry.addendums || []).map((addendum, i) => {
+                      const key = `addendum-${i}`;
+                      const path = `addendums/${encodeURIComponent(addendum.number)}/pdf`;
+                      const signedPath = `addendums/${encodeURIComponent(addendum.number)}/signed-pdf`;
+                      return (
+                        <div key={key} className="space-y-2">
+                          <DocumentRow
+                            icon={FileDiff}
+                            title={`Addendum ${i + 1}`}
+                            number={addendum.number}
+                            generatedAt={addendum.generatedAt}
+                            sentAt={addendum.sentAt}
+                            sentTo={addendum.sentTo}
+                            extra={addendum.sentAt ? 'Sent with the revised pro-forma' : 'Not emailed yet — the revised pro-forma goes with it'}
+                            onPreview={preview(key, path, `Addendum ${addendum.number}.pdf`)}
+                            onDownload={addendum.number ? download(key, path, `Addendum ${addendum.number}.pdf`) : null}
+                            downloading={downloading === key}
+                          />
+                          {addendum.signing?.signedAt ? (
+                            <DocumentRow
+                              icon={FileSignature}
+                              title={`Signed addendum ${i + 1}`}
+                              number={addendum.number}
+                              generatedAt={addendum.signing.signedAt}
+                              extra={`Signed digitally by ${addendum.signing.signerName} on ${formatDateTime(addendum.signing.signedAt)}`}
+                              onPreview={preview(`${key}-signed`, signedPath, `Signed Addendum ${addendum.number}.pdf`)}
+                              onDownload={addendum.signing.signedPdfFileId ? download(`${key}-signed`, signedPath, `Signed Addendum ${addendum.number}.pdf`) : null}
+                              downloading={downloading === `${key}-signed`}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    {enquiry.credit?.pps || enquiry.credit?.formGeneratedAt ? (
+                      <DocumentRow
+                        icon={BadgeIndianRupee}
+                        title="Credit application form"
+                        number={enquiry.contract?.number}
+                        generatedAt={enquiry.credit?.formGeneratedAt}
+                        extra="One-time credit (PPS)"
+                        onPreview={preview('credit', 'credit-form/pdf', 'Credit Application Form.pdf')}
+                        onDownload={download('credit', 'credit-form/pdf', 'Credit Application Form.pdf')}
+                        downloading={downloading === 'credit'}
+                      />
+                    ) : null}
+                    <EarlierIssues issues={enquiry.issues} document="proposal" icon={FileText} preview={preview} download={download} downloading={downloading} />
+                    <EarlierIssues issues={enquiry.issues} document="contract" icon={FileCheck2} preview={preview} download={download} downloading={downloading} />
+                    <EarlierIssues issues={enquiry.issues} document="proforma" icon={ReceiptText} preview={preview} download={download} downloading={downloading} />
+                  </CardContent>
+                </Card>
+                <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} bare />
+              </div>
+            ) : null}
           </SidePanelBody>
         </SidePanelContent>
       </SidePanel>

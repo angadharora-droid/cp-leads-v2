@@ -169,7 +169,7 @@ export const downloadSignedPdf = asyncHandler(async (req, res) => {
 
 export const downloadProformaPdf = asyncHandler(async (req, res) => {
   const file = await enquiryService.getProformaPdf(req.params.enquiryId, req.user);
-  return pipeFile(res, file);
+  return sendFile(res, file);
 });
 
 export const downloadSignedAddendum = asyncHandler(async (req, res) => {

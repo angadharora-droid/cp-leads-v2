@@ -164,6 +164,7 @@ const roomDetailsSchema = new Schema(
 const signingSchema = new Schema(
   {
     document: { type: String, enum: ['proposal', 'contract', 'addendum'], default: 'contract' },
+    documentVersion: { type: Number, min: 1 },
     tokenHash: { type: String, index: true },
     tokenExpiresAt: { type: Date },
     otpHash: { type: String },
@@ -183,6 +184,7 @@ const signingSchema = new Schema(
 /** A generated + emailed document (proposal HCP.EP…, contract HCP.EC…). */
 const documentSchema = new Schema(
   {
+    version: { type: Number, min: 1, default: 1 },
     // Document reference printed in the header, e.g. HCP.EP.000012.00
     number: { type: String, default: '' },
     // How many times it was reissued after an edit (the proposal's ".01" suffix).
@@ -228,7 +230,8 @@ const revisionSchema = new Schema(
  */
 const issueSchema = new Schema(
   {
-    document: { type: String, enum: ['proposal', 'contract'], required: true },
+    document: { type: String, enum: ['proposal', 'contract', 'proforma'], required: true },
+    version: { type: Number, min: 1 },
     number: { type: String, default: '' },
     revision: { type: Number, default: 0 },
     generatedAt: { type: Date },
@@ -243,6 +246,7 @@ const issueSchema = new Schema(
 
 const proformaSchema = new Schema(
   {
+    version: { type: Number, min: 1, default: 1 },
     number: { type: String, default: '' },
     fileId: { type: Schema.Types.ObjectId },
     generatedAt: { type: Date },

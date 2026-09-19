@@ -462,9 +462,9 @@ export async function sweepFollowUps(now = new Date()) {
           type: `follow_up.${kind}`,
           title,
           body,
-          link: `/leads/${lead._id}`,
-          entityType: 'Lead',
-          entityId: String(lead._id),
+          link: fu.enquiry ? `/enquiries/${fu.enquiry}` : `/leads/${lead._id}`,
+          entityType: fu.enquiry ? 'Enquiry' : 'Lead',
+          entityId: String(fu.enquiry || lead._id),
           dedupeKey: `fu:${fu._id}:${kind}`,
         });
       }
