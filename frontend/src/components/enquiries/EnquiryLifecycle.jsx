@@ -38,8 +38,9 @@ const EVENT_ICONS = {
  * @param {object} props
  * @param {string} props.enquiryId
  * @param {string|number} [props.version] changes whenever the enquiry does, to reload
+ * @param {boolean} [props.compact] the card sits in a narrow column: facts stack in one column
  */
-export default function EnquiryLifecycle({ enquiryId, version }) {
+export default function EnquiryLifecycle({ enquiryId, version, compact = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
@@ -114,7 +115,7 @@ export default function EnquiryLifecycle({ enquiryId, version }) {
                   </div>
 
                   {block.facts.length ? (
-                    <dl className="mt-2 grid gap-x-6 gap-y-2 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+                    <dl className={cn('mt-2 grid gap-x-6 gap-y-2 rounded-lg border bg-muted/30 p-3 text-sm', !compact && 'sm:grid-cols-2')}>
                       {block.facts.map((fact) => (
                         <div key={fact.label} className="min-w-0">
                           <dt className="text-xs text-muted-foreground">{fact.label}</dt>
@@ -132,10 +133,11 @@ export default function EnquiryLifecycle({ enquiryId, version }) {
                           <li key={j} className="flex gap-2 text-xs text-muted-foreground">
                             <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
                             <div className="min-w-0 flex-1">
-                              <p>
+                              {/* In a narrow column the stamp takes its own line rather than forcing the width. */}
+                              <p className="break-words">
                                 <span className="text-foreground">{event.text}</span>
-                                <span className="whitespace-nowrap">
-                                  {' · '}
+                                <span className={cn(compact ? 'block' : 'inline')}>
+                                  {compact ? '' : ' · '}
                                   {event.atLabel}
                                   {event.byName ? ` · ${event.byName}` : ''}
                                 </span>

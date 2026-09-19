@@ -589,6 +589,12 @@ export default function EnquiryPage() {
             </CardContent>
           </Card>
 
+        </div>
+
+        <div className="space-y-6">
+          {/* The story so far sits beside the functions; reloads when the enquiry changes. */}
+          <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} compact />
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -603,13 +609,13 @@ export default function EnquiryPage() {
               ) : (
                 <ul className="divide-y">
                   {emails.map((mail, i) => (
-                    <li key={i} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
-                      <span className="min-w-0">
+                    <li key={i} className="py-2 text-sm">
+                      <span className="block min-w-0">
                         <span className="font-medium text-foreground">{EMAIL_KIND_LABELS[mail.kind] || mail.kind}</span>
                         <span className="text-muted-foreground"> to {mail.to}{mail.cc ? ` (cc ${mail.cc})` : ''}</span>
                         {mail.subject ? <span className="block truncate text-xs text-muted-foreground">{mail.subject}</span> : null}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="block text-xs text-muted-foreground">
                         {formatDateTime(mail.at)}
                         {mail.byName ? ` · ${mail.byName}` : ''}
                       </span>
@@ -619,12 +625,6 @@ export default function EnquiryPage() {
               )}
             </CardContent>
           </Card>
-
-          {/* Every stage it reached, with that stage's details; reloads when the enquiry changes. */}
-          <EnquiryLifecycle enquiryId={enquiry._id} version={enquiry.updatedAt} />
-        </div>
-
-        <div className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
