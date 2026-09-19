@@ -93,6 +93,34 @@ function rackNote(rack, offered) {
   return rack && rack !== offered ? `Rack ${money(rack)}` : '';
 }
 
+// Helvetica advance widths (per 1000 em) for the characters an amount uses.
+const HELVETICA_WIDTHS = { R: 722, s: 500, '.': 278, ',': 278, ' ': 278 };
+function helveticaWidth(text, fontSize) {
+  let units = 0;
+  for (const ch of String(text)) units += HELVETICA_WIDTHS[ch] ?? 556;
+  return (units / 1000) * fontSize;
+}
+
+/**
+ * A right-aligned amount struck through its middle. pdfmake's own
+ * lineThrough sits a quarter of the ascent above the baseline, low on
+ * figures, so the rule is drawn here at half the cap height instead.
+ * `width` is the cell's content width the text is aligned within.
+ */
+function struckAmount(text, { width, fontSize = 9, color = SHEET.muted, margin = [0, 0, 0, 0] } = {}) {
+  const textWidth = helveticaWidth(text, fontSize);
+  const middle = margin[1] + fontSize * 0.36;
+  return {
+    stack: [
+      {
+        canvas: [{ type: 'line', x1: width - textWidth, y1: 0, x2: width, y2: 0, lineWidth: 0.7, lineColor: color }],
+        relativePosition: { x: 0, y: middle },
+      },
+      { text, fontSize, color, alignment: 'right', margin },
+    ],
+  };
+}
+
 const RACK_NOTE = "Rack rate is the hotel's published rate; the rate shown above it is the rate offered to you.";
 
 /* ------------------------------- Table pieces ------------------------------ */
@@ -413,7 +441,7 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
     { text: 'Value at rack rates (exclusive of taxes)', color: SHEET.muted, fontSize: 8.4, alignment: 'right', colSpan: 3, margin: [0, 1, 0, 0] },
     {},
     {},
-    { text: money(rackTotal), color: SHEET.muted, fontSize: 9, alignment: 'right', decoration: 'lineThrough', margin: [0, 1, 0, 0] },
+    struckAmount(money(rackTotal), { width: 80, fontSize: 9, margin: [0, 1, 0, 0] }),
   ];
   const totalRow = [
     {
