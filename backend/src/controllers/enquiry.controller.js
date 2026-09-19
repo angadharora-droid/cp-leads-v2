@@ -64,6 +64,18 @@ export const downloadProposal = asyncHandler(async (req, res) => {
   return res.send(buffer);
 });
 
+/** An earlier issue of the proposal or contract, rebuilt from its saved details. */
+export const downloadIssue = asyncHandler(async (req, res) => {
+  const { buffer, filename, contentType } = await enquiryService.getIssuePdf(
+    req.params.enquiryId,
+    req.params.index,
+    req.user
+  );
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+  return res.send(buffer);
+});
+
 export const emailProposal = asyncHandler(async (req, res) => {
   const enquiry = await enquiryService.emailProposal(req.params.enquiryId, req.body, req.user, req);
   return sendOk(res, { enquiry });

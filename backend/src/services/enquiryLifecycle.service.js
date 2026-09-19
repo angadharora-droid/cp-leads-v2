@@ -153,6 +153,14 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
     const enteredAt = at || firstEntry(stage)?.at || null;
     const left = leftAt(stage, enteredAt);
     const current = enquiry.stage === stage;
+    // What the edits made in this stage did to the headline figures.
+    const edits = revisions.filter((r) => r.stage === stage && r.valueAfter !== undefined && r.valueAfter !== null);
+    if (edits.length) {
+      const first = edits[0];
+      const last = edits[edits.length - 1];
+      if (first.paxBefore !== last.paxAfter) details.push(['Guests changed here', `${first.paxBefore} → ${last.paxAfter}`]);
+      if (first.valueBefore !== last.valueAfter) details.push(['Value changed here', `${rupees(first.valueBefore) || 'Rs. 0'} → ${rupees(last.valueAfter) || 'Rs. 0'}`]);
+    }
     blocks.push({
       stage,
       label: STAGE_LABELS[stage],
@@ -170,7 +178,18 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
   // When it was raised: the first history entry, else the record's own stamp.
   const raisedAt = firstEntry('enquiry')?.at || enquiry.createdAt;
 
-  // 1. Enquiry — always.
+  // The enquiry as it was raised. Enquiries older than this record start from
+  // what they hold now, which is also what they were raised with unless a
+  // recorded edit says otherwise.
+  const raised = enquiry.raised?.at ? enquiry.raised : null;
+  const raisedFunctions = raised
+    ? (raised.functions || []).map((fn) => ({ label: [fn.name, fn.venue].filter(Boolean).join(' at '), date: fn.date, pax: Number(fn.pax) || 0, total: Number(fn.total) || 0 }))
+    : functions.map((fn) => ({ label: [functionLabel(fn), functionVenueLabel(fn, { primaryOnly: true })].filter(Boolean).join(' at '), date: fn.date, pax: Number(fn.pax) || 0, total: functionValue(fn) }));
+  const raisedDates = raisedFunctions.map((f) => f.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
+  const raisedPax = raisedFunctions.reduce((sum, f) => sum + f.pax, 0);
+  const raisedValue = raisedFunctions.reduce((sum, f) => sum + f.total, 0);
+
+  // 1. Enquiry — always, with the figures it was raised with.
   push('enquiry', {
     at: raisedAt,
     byName: firstEntry('enquiry')?.byName || enquiry.createdByName,
@@ -179,18 +198,15 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       ['Department', departmentLabel(lead, enquiry.department)],
       ['Contact', [enquiry.contactName, enquiry.contactPhone, enquiry.contactEmail].filter(Boolean).join(' · ')],
       ['Enquiry for', KIND_LABELS[enquiry.kind] || ''],
-      [
-        functions.length > 1 ? 'Functions' : 'Function',
-        functions.map((fn) => [functionLabel(fn), functionVenueLabel(fn, { primaryOnly: true })].filter(Boolean).join(' at ')).join('; '),
-      ],
+      [raisedFunctions.length > 1 ? 'Functions' : 'Function', raisedFunctions.map((f) => f.label).join('; ')],
       [
         'Function dates',
-        dates.length
-          ? [...new Set([dates[0], dates[dates.length - 1]].map((d) => when(d, { time: false })))].join(' to ')
+        raisedDates.length
+          ? [...new Set([raisedDates[0], raisedDates[raisedDates.length - 1]].map((d) => when(d, { time: false })))].join(' to ')
           : '',
       ],
-      ['Guests', pax || ''],
-      ['Estimated value', rupees(value)],
+      ['Guests', raisedPax || ''],
+      ['Estimated value', rupees(raisedValue)],
       ['Notes', enquiry.notes],
     ],
   });
@@ -320,6 +336,9 @@ export function buildLifecycle(enquiry, { sheets = [], estimates = [] } = {}) {
       totalDays: daysBetween(raisedAt, closedAt || now),
       open: !closedAt,
       value,
+      raisedValue,
+      // "Raised at Rs. 1,00,000 · now Rs. 85,000" once the figure has moved.
+      valueLine: raisedValue !== value ? `Raised at ${rupees(raisedValue) || 'Rs. 0'} · now ${rupees(value) || 'Rs. 0'}` : rupees(value),
     },
   };
 }

@@ -740,6 +740,9 @@ export async function createEnquiry(leadId, body, actor, req) {
   if (holder) enterWaitlist(enquiry, holder, actor);
   await enquiry.save();
   await enquiry.populate(FN_POPULATE);
+  // Keep the enquiry as raised: the life cycle starts from these figures.
+  enquiry.raised = snapshotOf(enquiry);
+  await enquiry.save();
 
   const deptLabel = departmentLabel(lead, department);
   pushLeadHistory(
@@ -859,11 +862,57 @@ const ROOM_FIELDS = [
 
 const sameText = (a, b) => String(a ?? '') === String(b ?? '');
 
+/**
+ * Everything the proposal and contract print, as plain data: the populated
+ * functions trimmed to the fields the PDF builders read, the room block,
+ * the contact and billing fields and the document numbers. A superseded
+ * issue keeps one of these (a few KB) and is rebuilt from it on request.
+ */
+function printSnapshot(enquiry) {
+  const plain = enquiry.toObject ? enquiry.toObject({ depopulate: false, virtuals: false }) : enquiry;
+  const ref = (item) =>
+    item && typeof item === 'object'
+      ? { _id: item._id, name: item.name, rate: item.rate, pricing: item.pricing, hallCharge: item.hallCharge, startTime: item.startTime, endTime: item.endTime }
+      : item;
+  const refs = (list) => (list || []).map(ref);
+  const pick = (obj, keys) => Object.fromEntries(keys.map((key) => [key, obj?.[key]]));
+  return {
+    kind: plain.kind,
+    functions: (plain.functions || []).map((fn) => ({
+      _id: fn._id,
+      name: fn.name,
+      date: fn.date,
+      pax: fn.pax,
+      functionType: ref(fn.functionType),
+      venue: ref(fn.venue),
+      addOnRooms: refs(fn.addOnRooms),
+      venues: refs(fn.venues),
+      sessions: refs(fn.sessions),
+      session: ref(fn.session),
+      hallChargeVenues: refs(fn.hallChargeVenues),
+      menuType: ref(fn.menuType),
+      addOns: refs(fn.addOns),
+      liquor: refs(fn.liquor),
+      requirements: refs(fn.requirements),
+      lineRates: (fn.lineRates || []).map((l) => ({ item: l.item?._id || l.item, rate: l.rate })),
+      perPaxRate: fn.perPaxRate,
+      rackRate: fn.rackRate,
+      proposedRate: fn.proposedRate,
+      additionalRequirement: fn.additionalRequirement,
+    })),
+    room: plain.room,
+    ...pick(plain, ['contactName', 'contactEmail', 'contactPhone', 'billingName', 'gstNumber', 'panNumber', 'paymentTerms', 'createdByName']),
+    proposal: pick(plain.proposal || {}, ['number', 'revision', 'generatedAt']),
+    contract: pick(plain.contract || {}, ['number', 'generatedAt']),
+    proforma: pick(plain.proforma || {}, ['number']),
+  };
+}
+
 /** What the documents print, taken before and after an edit. */
 function captureForRevision(enquiry) {
   const fields = {};
   for (const key of Object.keys(PRINTED_FIELDS)) fields[key] = enquiry[key] || '';
-  return { snapshot: snapshotOf(enquiry), fields };
+  return { snapshot: snapshotOf(enquiry), fields, print: printSnapshot(enquiry) };
 }
 
 /**
@@ -953,11 +1002,23 @@ async function upsertPendingAddendum(enquiry, current) {
  *   proposal made            → the proposal moves to its next revision and
  *                              needs emailing again
  */
-async function recordRevision(enquiry, lead, actor, changes) {
+async function recordRevision(enquiry, lead, actor, changes, before, after) {
   let document = 'enquiry';
   let number = '';
   let firstAddendum = false;
+  // The issue the client may hold, before this edit rewrites it.
+  let superseded = null;
+  const issueOf = (kind, doc) => ({
+    document: kind,
+    number: doc.number,
+    revision: doc.revision || 0,
+    generatedAt: doc.generatedAt,
+    sentAt: doc.sentAt,
+    sentTo: doc.sentTo || '',
+  });
+  const total = (capture, field) => (capture?.snapshot?.functions || []).reduce((sum, fn) => sum + (Number(fn[field]) || 0), 0);
   if (enquiry.contract?.sentAt && enquiry.agreed?.at) {
+    superseded = issueOf('contract', enquiry.contract);
     const current = snapshotOf(enquiry);
     if (!sameSnapshot(current, enquiry.agreed)) {
       const result = await upsertPendingAddendum(enquiry, current);
@@ -972,11 +1033,13 @@ async function recordRevision(enquiry, lead, actor, changes) {
       number = enquiry.contract.number;
     }
   } else if (enquiry.contract?.number) {
+    superseded = issueOf('contract', enquiry.contract);
     enquiry.contract.generatedAt = new Date();
     if (enquiry.proforma?.number) enquiry.proforma.generatedAt = new Date();
     document = 'contract';
     number = enquiry.contract.number;
   } else if (enquiry.proposal?.number) {
+    superseded = issueOf('proposal', enquiry.proposal);
     bumpProposalRevision(enquiry);
     enquiry.proposal.generatedAt = new Date();
     enquiry.proposal.sentAt = undefined;
@@ -993,8 +1056,22 @@ async function recordRevision(enquiry, lead, actor, changes) {
     document,
     number,
     changes,
+    paxBefore: total(before, 'pax'),
+    paxAfter: total(after, 'pax'),
+    valueBefore: total(before, 'total'),
+    valueAfter: total(after, 'total'),
   });
+  // Enquiries raised before this record existed start from what they hold now.
+  if (!enquiry.raised?.at) enquiry.raised = before?.snapshot || snapshotOf(enquiry);
   await enquiry.save();
+  // The superseded issue is kept as data, appended without touching the
+  // earlier ones (their `print` is not loaded on the document).
+  if (superseded && before?.print) {
+    await Enquiry.updateOne(
+      { _id: enquiry._id },
+      { $push: { issues: { ...superseded, supersededAt: new Date(), supersededByName: actorName(actor) || '', print: before.print } } }
+    );
+  }
   if (document === 'addendum' && firstAddendum) {
     pushLeadHistory(lead, actor, 'enquiry_addendum', `Addendum ${number} to contract ${enquiry.contract.number} made`);
     await lead.save();
@@ -1075,8 +1152,9 @@ export async function updateEnquiry(enquiryId, body, actor, req) {
   await enquiry.populate(FN_POPULATE);
   // Anything printed that changed reissues the document the client holds
   // and is recorded for the life cycle.
-  const changes = describeChanges(before, captureForRevision(enquiry));
-  const revision = changes.length ? await recordRevision(enquiry, lead, actor, changes) : null;
+  const after = captureForRevision(enquiry);
+  const changes = describeChanges(before, after);
+  const revision = changes.length ? await recordRevision(enquiry, lead, actor, changes, before, after) : null;
   await writeAudit({
     req,
     actor,
@@ -1397,6 +1475,26 @@ export async function downloadContract(enquiryId, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
   if (!enquiry.contract?.number) throw new AppError('No contract yet', 404, 'NOT_FOUND');
   return buildContractPdf(enquiry, lead, { preparedBy: preparedBy(actor, enquiry) });
+}
+
+/**
+ * A superseded issue of the proposal or contract, rebuilt from the printed
+ * details it was made from (issues are listed on the enquiry; `index` is the
+ * position in that list).
+ */
+export async function getIssuePdf(enquiryId, index, actor) {
+  const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
+  const n = Number.parseInt(index, 10);
+  const stored = Number.isInteger(n) && n >= 0 ? await Enquiry.findById(enquiry._id).select('+issues.print').lean() : null;
+  const issue = stored?.issues?.[n];
+  if (!issue?.print) throw new AppError('That issue is not on record', 404, 'NOT_FOUND');
+  const printed = { ...issue.print, _id: enquiry._id, createdByName: issue.print.createdByName || enquiry.createdByName };
+  const options = { preparedBy: preparedBy(actor, enquiry) };
+  const built =
+    issue.document === 'contract'
+      ? await buildContractPdf(printed, lead, options)
+      : await buildEnquiryProposalPdf(printed, lead, options);
+  return { ...built, filename: built.filename.replace(/\.pdf$/i, ' (superseded).pdf') };
 }
 
 function newSignToken() {
