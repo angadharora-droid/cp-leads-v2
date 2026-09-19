@@ -604,6 +604,7 @@ export async function updateProspectus(id, body, actor, req) {
   if (body.dateTo !== undefined) fp.dateTo = body.dateTo ? dayStart(body.dateTo) : fp.dateFrom;
   if (fp.dateTo && fp.dateFrom && fp.dateTo < fp.dateFrom) fp.dateTo = fp.dateFrom;
   // Once it has gone out, every later save is a revision.
+  if (fp.$locals) fp.$locals.movementActor = actor?.id;
   fp.status = 'draft';
   fp.approval = undefined;
   if (fp.printedAt || fp.emails?.length) fp.revision = (fp.revision || 1) + 1;
@@ -637,6 +638,7 @@ export async function refreshProspectus(id, actor, req) {
     }
     fp[key] = value;
   }
+  if (fp.$locals) fp.$locals.movementActor = actor?.id;
   fp.status = 'draft';
   fp.approval = undefined;
   if (fp.printedAt || fp.emails?.length) fp.revision = (fp.revision || 1) + 1;

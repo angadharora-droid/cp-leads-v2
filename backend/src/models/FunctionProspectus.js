@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { attachMovementHooks } from './movementHooks.js';
+
 const { Schema, model } = mongoose;
 
 export const ADVANCE_MODE_OPTIONS = ['cash', 'card', 'cheque', 'upi', 'neft', 'other', ''];
@@ -113,6 +115,9 @@ const functionProspectusSchema = new Schema(
 
 functionProspectusSchema.index({ enquiry: 1, functionId: 1 }, { unique: true });
 functionProspectusSchema.index({ dateFrom: 1 });
+
+// Raised, approved, or edited back to draft: each notifies the team.
+attachMovementHooks(functionProspectusSchema, { entityType: 'FunctionProspectus', field: 'status' });
 
 const FunctionProspectus = model('FunctionProspectus', functionProspectusSchema);
 

@@ -1,4 +1,5 @@
 import AuditLog from '../models/AuditLog.js';
+import { notifyDocumentEvent } from '../services/notification.service.js';
 
 /**
  * Writes an audit log entry. Never throws — failures are swallowed and logged.
@@ -46,6 +47,18 @@ export async function writeAudit({
       meta,
       ip,
       userAgent,
+    });
+
+    // Documents going out or coming back signed also raise in-app
+    // notifications (services/notification.service.js decides which actions).
+    notifyDocumentEvent({
+      action,
+      entityType: entityType || '',
+      entityId: entityId != null ? String(entityId) : '',
+      summary: summary || '',
+      actorId: actorId ? String(actorId) : '',
+    }).catch((err) => {
+      console.error('[notify] document event failed:', err?.message || err);
     });
   } catch (err) {
     console.error('[audit] failed to write audit log:', err?.message || err);
