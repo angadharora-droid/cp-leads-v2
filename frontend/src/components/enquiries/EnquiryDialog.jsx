@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import {
@@ -150,6 +150,24 @@ function loadLineRates(fn) {
 export function inr(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString('en-IN')}`;
 }
+
+/** People saved under a branch / department (added when a lead is linked there), newest first. */
+function departmentContacts(lead, departmentId) {
+  const node = (lead?.departments || []).find((d) => String(d._id) === String(departmentId));
+  return [...(node?.contacts || [])].sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+}
+
+function personContact(person) {
+  return { contactName: person?.name || '', contactEmail: person?.email || '', contactPhone: person?.mobile || '' };
+}
+
+function leadContact(lead) {
+  return { contactName: lead?.contactPerson || '', contactEmail: lead?.email || '', contactPhone: lead?.mobile || '' };
+}
+
+const CONTACT_KEYS = ['contactName', 'contactEmail', 'contactPhone'];
+const TYPED_CONTACT = '__typed__';
+const sameContact = (a, b) => CONTACT_KEYS.every((k) => String(a?.[k] || '') === String(b?.[k] || ''));
 
 /** Only options an admin left active in Banquet Setup can be picked. */
 function activeOnly(list) {
@@ -1141,6 +1159,9 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   const needsDepartment = !isIndividual(lead);
   const [isSaving, setIsSaving] = useState(false);
   const [conflicts, setConflicts] = useState({});
+  // The contact last filled in automatically; a contact still equal to it
+  // was not typed by hand, so picking another department may replace it.
+  const autoContact = useRef(null);
   const [form, setForm] = useState({
     department: '',
     kind: 'banquet',
@@ -1157,6 +1178,12 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   });
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  // The people saved under the chosen department, offered as a pick list
+  // when there is a choice to make.
+  const deptContacts = useMemo(() => departmentContacts(lead, form.department), [lead, form.department]);
+  const pickedContactIndex = deptContacts.findIndex((person) => sameContact(form, personContact(person)));
+  const showContactPicker = deptContacts.length > 1 || (deptContacts.length === 1 && pickedContactIndex < 0);
   const hasBanquet = form.kind !== 'room';
   const hasRooms = form.kind !== 'banquet';
 
@@ -1225,12 +1252,19 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
       });
     } else {
       const only = (lead?.departments || []).length === 1 ? lead.departments[0] : null;
+      const department = prefill?.department || (only ? String(only._id) : '');
+      // The contact comes from the person just linked, else the newest person
+      // saved under the department, else the company's main contact.
+      const contact = prefill?.contactName
+        ? { contactName: prefill.contactName, contactEmail: prefill.contactEmail || '', contactPhone: prefill.contactPhone || '' }
+        : departmentContacts(lead, department)[0]
+          ? personContact(departmentContacts(lead, department)[0])
+          : leadContact(lead);
+      autoContact.current = contact;
       setForm({
-        department: prefill?.department || (only ? String(only._id) : ''),
+        department,
         kind: 'banquet',
-        contactName: prefill?.contactName || lead?.contactPerson || '',
-        contactEmail: prefill?.contactEmail || lead?.email || '',
-        contactPhone: prefill?.contactPhone || lead?.mobile || '',
+        ...contact,
         notes: '',
         // A registered company bills under its legal name and numbers.
         billingName: lead?.legalName || lead?.businessName || '',
@@ -1337,6 +1371,28 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
 
   function setField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  /**
+   * Picking a branch / department on a new enquiry fills the contact from the
+   * people saved under it — unless the contact was typed by hand, which is kept.
+   */
+  function pickDepartment(departmentId) {
+    setForm((f) => {
+      const next = { ...f, department: departmentId };
+      const untouched = CONTACT_KEYS.every((k) => !f[k]) || sameContact(f, autoContact.current);
+      if (isEdit || !untouched) return next;
+      const person = departmentContacts(lead, departmentId)[0];
+      const contact = person ? personContact(person) : leadContact(lead);
+      autoContact.current = contact;
+      return { ...next, ...contact };
+    });
+  }
+
+  function pickContact(person) {
+    const contact = personContact(person);
+    autoContact.current = contact;
+    setForm((f) => ({ ...f, ...contact }));
   }
 
   function setRoom(field, value) {
@@ -1517,7 +1573,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                     id="enq-dept"
                     lead={lead}
                     value={form.department}
-                    onChange={(v) => setField('department', v)}
+                    onChange={pickDepartment}
                     onLeadUpdated={onLeadUpdated}
                   />
                 </div>
@@ -1548,6 +1604,25 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                   value={form.contactName}
                   onChange={(e) => setField('contactName', e.target.value)}
                 />
+                {showContactPicker ? (
+                  <Select
+                    value={pickedContactIndex >= 0 ? String(pickedContactIndex) : TYPED_CONTACT}
+                    onValueChange={(v) => v !== TYPED_CONTACT && pickContact(deptContacts[Number(v)])}
+                  >
+                    <SelectTrigger aria-label="People in this department" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptContacts.map((person, i) => (
+                        <SelectItem key={person._id || i} value={String(i)}>
+                          {[person.name, person.designation].filter(Boolean).join(' — ')}
+                          {person.mobile ? ` · ${person.mobile}` : ''}
+                        </SelectItem>
+                      ))}
+                      {pickedContactIndex < 0 ? <SelectItem value={TYPED_CONTACT}>Typed by hand</SelectItem> : null}
+                    </SelectContent>
+                  </Select>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="enq-email">Contact email</Label>
