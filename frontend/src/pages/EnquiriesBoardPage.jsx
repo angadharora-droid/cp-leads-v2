@@ -127,6 +127,25 @@ function enquiryFlags(enquiry, tatDays, now) {
   };
 }
 
+/**
+ * Where a card sits in its column: red (event within 7 days, nearest first),
+ * then amber (open over 2 weeks, oldest first), then over TAT (most overdue
+ * first), then everything else in the order it came (latest updated first).
+ */
+function priorityRank(flags) {
+  if (flags.soonIn !== null) return [0, flags.soonIn];
+  if (flags.openDays !== null) return [1, -flags.openDays];
+  if (flags.tat) return [2, -flags.tat.overBy];
+  return [3, 0];
+}
+
+function rankByPriority(items, flagsById) {
+  return items
+    .map((item, index) => ({ item, index, rank: priorityRank(flagsById.get(item._id) || NO_FLAGS) }))
+    .sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] || a.index - b.index)
+    .map(({ item }) => item);
+}
+
 function soonLabel(days) {
   if (days === 0) return 'Event today';
   if (days === 1) return 'Event tomorrow';
@@ -436,7 +455,11 @@ export default function EnquiriesBoardPage() {
     const enquiryValue = (e) =>
       (e.functions || []).reduce((sum, fn) => sum + (Number(fn.proposedRate ?? fn.rackRate) || 0), 0);
     return stages.map((stage) => {
-      const items = filtered.filter((e) => e.stage === stage.key);
+      // Most urgent first: see rankByPriority.
+      const items = rankByPriority(
+        filtered.filter((e) => e.stage === stage.key),
+        flagsById
+      );
       const value = items.reduce((sum, e) => sum + enquiryValue(e), 0);
       return {
         ...stage,
@@ -444,7 +467,7 @@ export default function EnquiriesBoardPage() {
         subtitle: value ? `Rs. ${value.toLocaleString('en-IN')}` : '',
       };
     });
-  }, [filtered, showLost]);
+  }, [filtered, showLost, flagsById]);
 
   const active = filtered.filter((e) => !['lost', 'cancelled'].includes(e.stage)).length;
   const won = filtered.filter((e) => e.stage === 'won').length;
