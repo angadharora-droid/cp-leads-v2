@@ -22,6 +22,8 @@ import {
  *   header    logo · FUNCTION PROSPECTUS · FP No. / revision / date
  *   facts     reservation no · FP no · FP date · made by · approved by
  *   summary   Date (with the weekday) | Time | Type of Function | Venue | Pax
+ *   golden    up to three points the team must not miss, in a maroon box
+ *             (left out when there are none)
  *   body      Food menu, liquor menu, other requirements (left)  |  party &
  *             contact, arrangement, commercials, billing instruction, board
  *             to read, department and special instructions (right)
@@ -232,6 +234,67 @@ function commercials(fp) {
   };
 }
 
+/**
+ * The golden points: up to three customisations the kitchen and banquet team
+ * must not miss, in a tinted box with a maroon accent, numbered 1–3. Nothing
+ * is printed when there are none. The tighter layouts tried when the sheet
+ * runs past the page (`density` 1, then 2) trim its padding and type too.
+ */
+function goldenPoints(points, { density = 0 } = {}) {
+  const list = (Array.isArray(points) ? points : [])
+    .map((p) => String(p ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (!list.length) return [];
+  const dense = density >= 1;
+  const size = density >= 2 ? 8.6 : dense ? 9 : 9.6;
+  const pad = density >= 2 ? 3.5 : dense ? 4.5 : 6;
+  return [
+    {
+      id: 'fpGolden',
+      table: {
+        widths: [84, '*'],
+        body: [
+          [
+            {
+              text: 'GOLDEN POINTS',
+              color: SHEET.maroon,
+              bold: true,
+              fontSize: 7.5,
+              characterSpacing: 0.7,
+              margin: [0, (size - 7.5) * 0.7, 0, 0],
+            },
+            {
+              stack: list.map((point, i) => ({
+                columns: [
+                  { width: 12, text: `${i + 1}.`, bold: true, color: SHEET.maroon },
+                  { width: '*', text: point, bold: true, color: SHEET.ink },
+                ],
+                columnGap: 2,
+                fontSize: size,
+                lineHeight: density >= 2 ? 1.05 : 1.12,
+                margin: [0, i ? (dense ? 1 : 2.5) : 0, 0, 0],
+              })),
+            },
+          ],
+        ],
+      },
+      layout: {
+        hLineWidth: () => 0.8,
+        vLineWidth: (i) => (i === 0 ? 3 : i === 2 ? 0.8 : 0),
+        hLineColor: () => SHEET.maroon,
+        vLineColor: () => SHEET.maroon,
+        fillColor: () => SHEET.tint,
+        paddingLeft: (i) => (i === 0 ? 9 : 4),
+        paddingRight: () => 9,
+        paddingTop: () => pad,
+        paddingBottom: () => pad,
+      },
+      margin: [0, 0, 0, dense ? 8 : 12],
+    },
+  ];
+}
+
 /** One signature box per department the sheet goes to. */
 function signOff(departments, space) {
   const names = departments.map((d) => String(d || '').trim()).filter(Boolean).slice(0, MAX_SIGN_OFF);
@@ -334,6 +397,7 @@ function docDefinition(fp, { printedAt, departments, bodyHeight, density = 0 }) 
       layout: SUMMARY_LAYOUT,
       margin: [0, 12, 0, 12],
     },
+    ...goldenPoints(fp.goldenPoints, { density }),
     {
       id: 'fpBody',
       table: {

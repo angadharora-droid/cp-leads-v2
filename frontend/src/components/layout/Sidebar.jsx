@@ -15,6 +15,7 @@ import {
   UserCog,
   ScrollText,
   Building2,
+  Inbox,
   ChevronsUpDown,
   Check,
   X,
@@ -31,7 +32,8 @@ const LEADS_GROUPS = [
     label: 'Workspace',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-      { to: '/leads', label: 'Leads', icon: FolderKanban },
+      { to: '/prospects', label: 'Leads', icon: Inbox },
+      { to: '/leads', label: 'Companies & Individuals', icon: FolderKanban },
       { to: '/enquiries', label: 'Enquiries', icon: KanbanSquare },
       { to: '/rate-contracts', label: 'Rate Contracts', icon: FileSignature },
       { to: '/banquet-calendar', label: 'Banquet Calendar', icon: CalendarDays },

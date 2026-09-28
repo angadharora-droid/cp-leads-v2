@@ -78,7 +78,7 @@ function teamFilters(query) {
   return out;
 }
 
-/** Management reports: performance, productivity, pipeline ageing and the audit report. */
+/** Management reports: performance, scorecard, productivity, clients, pipeline ageing and the audit report. */
 export const teamOverview = asyncHandler(async (req, res) => {
   return sendOk(res, await getTeamReport(teamFilters(req.query)));
 });

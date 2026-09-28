@@ -443,7 +443,7 @@ function addendumMeta(addendum) {
  */
 function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature } = {}) {
   const client = lead?.businessName || enquiry.contactName || 'Client';
-  const address = lead?.address || lead?.city || '';
+  const address = lead?.registeredAddress || lead?.address || lead?.city || '';
   const madeOn = ddmmyyyy(addendum?.generatedAt || new Date());
   const effective = ddmmyyyy(addendum?.effectiveDate || addendum?.generatedAt || new Date());
   const contractRef = [enquiry.contract?.number, enquiry.contract?.generatedAt ? `dated ${ddmmyyyy(enquiry.contract.generatedAt)}` : '']
@@ -613,7 +613,7 @@ export function amountInWords(amount) {
   return `Rupees ${parts.join(' ')} Only`;
 }
 
-const GST_RATE = 0.18;
+export const GST_RATE = 0.18;
 // SAC 996335: catering services in exhibition halls, events, marriage halls
 // and other outdoor/indoor functions.
 const SAC_BANQUET = '996335';
@@ -648,7 +648,7 @@ export async function buildProformaPdf(enquiry, lead, options = {}) {
     pair('Guest Name', enquiry.contactName || lead?.contactPerson),
     pair('2nd Guest Name', ''),
     pair('Other Guest Names', ''),
-    pair('Guest Address', [lead?.address, lead?.city].filter(Boolean).join(', ')),
+    pair('Guest Address', [lead?.registeredAddress || lead?.address, lead?.city].filter(Boolean).join(', ')),
     pair('Email ID', enquiry.contactEmail || lead?.email),
     pair('Mobile', enquiry.contactPhone || lead?.mobile),
     pair('GSTN Number', enquiry.gstNumber),
@@ -820,7 +820,7 @@ export async function buildCreditFormPdf(enquiry, lead) {
     section('Event Information & Details'),
     wide([V(''), {}, V(''), {}, {}]),
     wide([L('Event Name'), {}, V([eventTypes(enquiry), lead?.businessName].filter(Boolean).join(' — ')), {}, {}]),
-    wide([L('Address'), {}, V([lead?.address, lead?.city].filter(Boolean).join(', ')), {}, {}]),
+    wide([L('Address'), {}, V([lead?.registeredAddress || lead?.address, lead?.city].filter(Boolean).join(', ')), {}, {}]),
     wide([L('Contact Number'), {}, V([enquiry.contactName, enquiry.contactPhone || lead?.mobile].filter(Boolean).join(' — ')), {}, {}]),
     wide([L('Event Day & Date'), {}, V(eventDay), {}, {}]),
     wide([L('Estimated Event Value'), {}, V(eventTotal(enquiry) ? `${rs(eventTotal(enquiry))} + GST` : ''), {}, {}]),
@@ -838,7 +838,14 @@ export async function buildCreditFormPdf(enquiry, lead) {
     ],
     [{ text: `Approval Status:   ${box(false)} Approved     ${box(false)} Not Approved     ${box(pps)} PPS`, bold: true, colSpan: 5 }, {}, {}, {}, {}],
     [{ text: 'Please note :- PPS Authority Panel Approval\n(Managing Directors / General Managers )', bold: true, colSpan: 5 }, {}, {}, {}, {}],
-    [L('Credit Limit'), { text: 'Rs.3,00,000+Gst', bold: true, colSpan: 2 }, {}, L('Credit Days'), V('07 Days')],
+    // A registered company's own credit line; the form's standard terms otherwise.
+    [
+      L('Credit Limit'),
+      { text: lead?.credit?.enabled && lead.credit.limit ? `Rs.${inr(lead.credit.limit)}+Gst` : 'Rs.3,00,000+Gst', bold: true, colSpan: 2 },
+      {},
+      L('Credit Days'),
+      V(lead?.credit?.enabled && lead.credit.days ? `${String(lead.credit.days).padStart(2, '0')} Days` : '07 Days'),
+    ],
     [
       {
         stack: [

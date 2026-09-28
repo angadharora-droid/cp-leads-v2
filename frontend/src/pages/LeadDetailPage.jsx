@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Pencil, Trash2, UserCog, ChevronDown, Check, History as HistoryIcon, Mail, Phone, MapPin, Building2, User } from 'lucide-react';
 
@@ -14,6 +14,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { EnquiriesSection } from '@/components/enquiries/EnquiriesSection';
 import { ArcsSection } from '@/components/arcs/ArcsSection';
 import { DepartmentsSection } from '@/components/leads/DepartmentsSection';
+import RegistrationCard from '@/components/leads/RegistrationCard';
+import LedgerCard from '@/components/leads/LedgerCard';
 import { StatusBadge, LEAD_STATUSES } from '@/components/StatusBadge';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -85,6 +87,7 @@ function refName(value, fallback = 'Unknown') {
 
 export default function LeadDetailPage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -182,6 +185,18 @@ export default function LeadDetailPage() {
     );
   }
 
+  // Arriving from a lead that was just linked: open the enquiry form for the
+  // department it landed in, with the person as the enquiry's contact.
+  const newEnquiryPrefill =
+    searchParams.get('newEnquiry') === '1'
+      ? {
+          department: searchParams.get('department') || '',
+          contactName: searchParams.get('contactName') || '',
+          contactPhone: searchParams.get('contactPhone') || '',
+          contactEmail: searchParams.get('contactEmail') || '',
+        }
+      : null;
+
   const legacyActivity = Object.fromEntries(
     ['notes', 'followUps', 'visitReports', 'actionPoints', 'instructions'].map((field) =>
       [field, (lead[field] || []).filter((item) => !item.enquiry)])
@@ -201,7 +216,18 @@ export default function LeadDetailPage() {
       <div className="space-y-5">
         {!isIndividual(lead) ? <DepartmentsSection lead={lead} mutate={mutate} /> : null}
         <OverviewTab lead={lead} />
-        <EnquiriesSection lead={lead} onLeadUpdated={(next) => next && setLead(next)} />
+        {!isIndividual(lead) ? (
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <RegistrationCard lead={lead} />
+            <LedgerCard lead={lead} />
+          </div>
+        ) : null}
+        <EnquiriesSection
+          lead={lead}
+          onLeadUpdated={(next) => next && setLead(next)}
+          openWith={newEnquiryPrefill}
+          onOpened={() => setSearchParams({}, { replace: true })}
+        />
         {!isIndividual(lead) ? <ArcsSection lead={lead} onLeadUpdated={(next) => next && setLead(next)} /> : null}
         {Object.values(legacyActivity).some((items) => items.length) ? (
           <details className="rounded-lg border p-4">
@@ -268,7 +294,7 @@ function DetailHeader({ lead, isAdmin, canDelete, navigate, mutate, reload }) {
             variant="ghost"
             size="icon"
             onClick={() => navigate('/leads')}
-            aria-label="Back to leads"
+            aria-label="Back to companies and individuals"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -276,7 +302,7 @@ function DetailHeader({ lead, isAdmin, canDelete, navigate, mutate, reload }) {
             to="/leads"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            Leads
+            Companies &amp; Individuals
           </Link>
           <span className="text-muted-foreground">/</span>
           <span className="text-sm font-medium text-foreground">

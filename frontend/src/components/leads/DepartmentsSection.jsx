@@ -307,11 +307,15 @@ function DepartmentsSection({ lead, mutate }) {
                         key={node._id}
                         className="flex min-h-[3rem] items-center gap-2 px-3 py-1.5 transition-colors duration-150 hover:bg-muted/40"
                       >
-                        <span
-                          className="min-w-0 flex-1 truncate text-sm text-foreground"
-                          title={nodeLabel(node) || node.name}
-                        >
-                          {node.name}
+                        <span className="min-w-0 flex-1" title={nodeLabel(node) || node.name}>
+                          <span className="block truncate text-sm text-foreground">{node.name}</span>
+                          {(node.contacts || []).length ? (
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {node.contacts
+                                .map((p) => [p.name, p.designation].filter(Boolean).join(', '))
+                                .join(' · ')}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="flex items-center gap-1.5">
                           <CountPill

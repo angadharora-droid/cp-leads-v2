@@ -7,6 +7,9 @@ import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
 import FunctionProspectus from '../models/FunctionProspectus.js';
 import BanquetEstimate from '../models/BanquetEstimate.js';
+import Prospect from '../models/Prospect.js';
+import { DEFAULT_STAGE_TAT_DAYS } from '../models/BanquetSettings.js';
+import { getSettings } from './banquetConfig.service.js';
 
 /*
  * Management reports (admins and managers only):
@@ -14,17 +17,27 @@ import BanquetEstimate from '../models/BanquetEstimate.js';
  *   Executive performance  — what each executive's leads produced in the
  *                            period: leads, enquiries, proposals and contracts
  *                            sent, won / lost / cancelled, conversion, days
- *                            to win, advance collected, and the open pipeline.
+ *                            to win, money collected, and the open pipeline.
+ *   Salesperson scorecard  — per executive: leads captured and linked,
+ *                            enquiries, proposals, won value, conversion, open
+ *                            enquiries over their stage TAT right now, and the
+ *                            average days from enquiry to first proposal.
  *   Executive productivity — what each person did in the period: visits,
  *                            follow-ups, action points, emails, sheets made,
  *                            actions logged and the days they were active.
+ *   Client productivity    — per company / individual with activity in the
+ *                            period: enquiries, proposals, won / lost /
+ *                            cancelled, conversion, won and open value, money
+ *                            collected, days to win and the last enquiry.
  *   Pipeline ageing        — every open enquiry with the days it has sat in
- *                            its stage, flagged once past the stage's limit.
+ *                            its stage, flagged once past the stage's TAT
+ *                            (Banquet Setup).
  *   Audit report           — the audit log of the period, by user, by area
  *                            and by day, with the detail rows.
  *
- * Performance is credited to the executive the lead is assigned to;
- * productivity to the person who did the work. Money is the proposed rate.
+ * Performance, clients and the pipeline side of the scorecard are credited to
+ * the executive the lead is assigned to; productivity and leads captured /
+ * linked to the person who did the work. Money is the proposed rate.
  */
 
 const OPEN_STAGES = ['enquiry', 'proposal', 'waitlist', 'provisional'];
@@ -37,8 +50,8 @@ const STAGE_LABELS = {
   lost: 'Lost',
   cancelled: 'Cancelled',
 };
-// Days an enquiry may sit in a stage before it counts as stuck.
-const STAGE_LIMIT_DAYS = { enquiry: 3, proposal: 7, waitlist: 14, provisional: 7 };
+// Days an enquiry may sit in a stage before it counts as stuck (over TAT) come
+// from Banquet Setup's stage TAT; DEFAULT_STAGE_TAT_DAYS stands in for any unset.
 const DAY = 24 * 60 * 60 * 1000;
 const AUDIT_ROW_LIMIT = 2000;
 const UNASSIGNED = 'unassigned';
@@ -124,6 +137,268 @@ function actionLabel(action) {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
 }
 
+/** The report key of a user reference: its id, or "unassigned". */
+function keyOf(id) {
+  return id ? String(id) : UNASSIGNED;
+}
+
+/** A test for "happened inside the period" (both ends included). */
+export function inPeriodOf({ from, to }) {
+  const start = new Date(from).getTime();
+  const end = new Date(to).getTime();
+  return (date) => {
+    if (!date) return false;
+    const t = new Date(date).getTime();
+    return t >= start && t <= end;
+  };
+}
+
+/** Days an enquiry may sit in each open stage: Banquet Setup's TAT, else the defaults. */
+export function stageTatDays(settings) {
+  const saved = settings?.stageTatDays || {};
+  const tat = {};
+  for (const stage of OPEN_STAGES) {
+    const raw = saved[stage];
+    const days = raw === null || raw === undefined || raw === '' ? Number.NaN : Number(raw);
+    tat[stage] = Number.isFinite(days) && days >= 0 ? days : DEFAULT_STAGE_TAT_DAYS[stage];
+  }
+  return tat;
+}
+
+/** When the enquiry was marked won, if it was. */
+function wonAtOf(enquiry) {
+  return enquiry.won?.at || (enquiry.stageHistory || []).find((h) => h.stage === 'won')?.at || null;
+}
+
+/**
+ * Money received from the client inside the period: the payment milestones
+ * marked received (on the date they were received), or — for a booking with
+ * no received milestone — the advance recorded when it was marked won.
+ */
+export function collectedInPeriod(enquiry, inPeriod) {
+  const received = (enquiry.payments?.milestones || []).filter((m) => m?.status === 'received');
+  if (received.length) {
+    return received.reduce((sum, m) => {
+      if (!inPeriod(m.received?.date || m.received?.at)) return sum;
+      const paid = m.received?.amount;
+      const amount = paid !== null && paid !== undefined && Number.isFinite(Number(paid)) ? Number(paid) : Number(m.amount) || 0;
+      return sum + amount;
+    }, 0);
+  }
+  const advance = enquiry.advance;
+  if (advance?.received && inPeriod(advance.date || advance.recordedAt)) return parseAmount(advance.amount);
+  return 0;
+}
+
+/** When the enquiry's first proposal was generated: the live one or the earliest issue it superseded. */
+export function firstProposalAt(enquiry) {
+  const times = [
+    enquiry.proposal?.generatedAt,
+    ...(enquiry.issues || []).filter((issue) => issue?.document === 'proposal').map((issue) => issue.generatedAt),
+  ]
+    .filter(Boolean)
+    .map((d) => new Date(d).getTime())
+    .filter((t) => !Number.isNaN(t));
+  return times.length ? new Date(Math.min(...times)) : null;
+}
+
+/** Days from the enquiry being raised to its first proposal (fractional), or null without one. */
+export function firstResponseDays(enquiry) {
+  const first = firstProposalAt(enquiry);
+  if (!first || !enquiry.createdAt) return null;
+  return Math.max(0, (first.getTime() - new Date(enquiry.createdAt).getTime()) / DAY);
+}
+
+/**
+ * Every open enquiry with the days it has sat in its current stage, flagged
+ * once past that stage's TAT; stuck ones first, then the oldest.
+ */
+export function buildAgeingRows({ enquiries = [], tat = DEFAULT_STAGE_TAT_DAYS, now = new Date(), executive = '', nameOf = () => '' }) {
+  return enquiries
+    .filter((e) => OPEN_STAGES.includes(e.stage) && (!executive || keyOf(e.lead?.assignedTo) === executive))
+    .map((e) => {
+      const entered = enteredCurrentStage(e);
+      const days = Math.max(0, Math.floor((now - entered) / DAY));
+      const dates = (e.functions || []).map((f) => f.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
+      const executiveId = keyOf(e.lead?.assignedTo);
+      return {
+        enquiryId: String(e._id),
+        businessName: e.lead?.businessName || e.contactName || 'Guest',
+        reference: e.lead?.reference || '',
+        executiveId,
+        executive: nameOf(executiveId),
+        stage: e.stage,
+        stageLabel: STAGE_LABELS[e.stage],
+        enteredAt: entered,
+        days,
+        limit: tat[e.stage],
+        overdue: days > tat[e.stage],
+        value: Math.round(enquiryValue(e)),
+        firstDate: dates[0] || null,
+        contactName: e.contactName || '',
+      };
+    })
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.days - a.days);
+}
+
+/**
+ * Client productivity: one row per company / individual whose enquiries did
+ * something in the period — raised, proposal sent, won, lost, cancelled or
+ * money collected — counted the same way as executive performance. The
+ * executive filter is the lead's assigned executive.
+ */
+export function buildClientRows({ leads = [], enquiries = [], period, executive = '', nameOf = () => '' }) {
+  const inPeriod = inPeriodOf(period);
+  const leadById = new Map(leads.map((lead) => [String(lead._id), lead]));
+  const clients = new Map();
+
+  for (const enquiry of enquiries) {
+    const leadId = enquiry.lead?._id || enquiry.lead;
+    if (!leadId) continue;
+    const id = String(leadId);
+    const lead = leadById.get(id) || (enquiry.lead?._id ? enquiry.lead : null);
+    if (!lead) continue;
+    const executiveId = keyOf(lead.assignedTo);
+    if (executive && executiveId !== executive) continue;
+
+    if (!clients.has(id)) {
+      clients.set(id, {
+        leadId: id,
+        client: lead.businessName || 'Unnamed',
+        reference: lead.reference || '',
+        leadType: lead.leadType === 'individual' ? 'individual' : 'company',
+        executiveId,
+        executive: nameOf(executiveId),
+        enquiries: 0,
+        proposalsSent: 0,
+        won: 0,
+        lost: 0,
+        cancelled: 0,
+        wonValue: 0,
+        openEnquiries: 0,
+        openValue: 0,
+        collected: 0,
+        totalEnquiries: 0,
+        lastEnquiryAt: null,
+        daysToWin: [],
+      });
+    }
+    const row = clients.get(id);
+    const value = enquiryValue(enquiry);
+
+    row.totalEnquiries += 1;
+    if (enquiry.createdAt && (!row.lastEnquiryAt || new Date(enquiry.createdAt) > new Date(row.lastEnquiryAt))) {
+      row.lastEnquiryAt = new Date(enquiry.createdAt);
+    }
+    if (inPeriod(enquiry.createdAt)) row.enquiries += 1;
+    if (inPeriod(enquiry.proposal?.sentAt)) row.proposalsSent += 1;
+    const wonAt = wonAtOf(enquiry);
+    if (wonAt && inPeriod(wonAt)) {
+      row.won += 1;
+      row.wonValue += value;
+      row.daysToWin.push(Math.max(0, Math.round((new Date(wonAt) - new Date(enquiry.createdAt)) / DAY)));
+    }
+    if (inPeriod(enquiry.lostAt)) row.lost += 1;
+    if (inPeriod(enquiry.cancellation?.at)) row.cancelled += 1;
+    row.collected += collectedInPeriod(enquiry, inPeriod);
+    if (OPEN_STAGES.includes(enquiry.stage)) {
+      row.openEnquiries += 1;
+      row.openValue += value;
+    }
+  }
+
+  return [...clients.values()]
+    .filter((r) => r.enquiries || r.proposalsSent || r.won || r.lost || r.cancelled || r.collected > 0)
+    .map(({ daysToWin, ...row }) => ({
+      ...row,
+      leadTypeLabel: row.leadType === 'individual' ? 'Individual' : 'Company',
+      wonValue: Math.round(row.wonValue),
+      openValue: Math.round(row.openValue),
+      collected: Math.round(row.collected),
+      // Of the enquiries that closed in the period, the share that were won.
+      conversion: percent(row.won, row.won + row.lost + row.cancelled),
+      avgDaysToWin: average(daysToWin),
+      repeat: row.totalEnquiries >= 2,
+    }))
+    .sort((a, b) => b.wonValue - a.wonValue || b.enquiries - a.enquiries || a.client.localeCompare(b.client));
+}
+
+/**
+ * Salesperson scorecard: the pipeline figures from executive performance
+ * (enquiries raised, proposals sent, won value, conversion) beside the leads
+ * each person captured and linked in the period, the open enquiries over
+ * their stage TAT right now, and the average days from an enquiry being
+ * raised to its first proposal, for first proposals made in the period.
+ */
+export function buildScorecard({ performance = [], prospects = [], enquiries = [], ageingRows = [], period, executive = '', nameOf = () => '' }) {
+  const inPeriod = inPeriodOf(period);
+  const wanted = (key) => !executive || key === executive;
+  const rows = new Map();
+  const row = (key) => {
+    if (!rows.has(key)) {
+      rows.set(key, {
+        executiveId: key,
+        executive: nameOf(key),
+        leadsCaptured: 0,
+        leadsLinked: 0,
+        enquiries: 0,
+        proposalsSent: 0,
+        won: 0,
+        wonValue: 0,
+        conversion: 0,
+        openEnquiries: 0,
+        overTat: 0,
+        responseDays: [],
+      });
+    }
+    return rows.get(key);
+  };
+
+  for (const p of performance) {
+    if (!wanted(p.executiveId)) continue;
+    Object.assign(row(p.executiveId), {
+      enquiries: p.enquiries || 0,
+      proposalsSent: p.proposalsSent || 0,
+      won: p.won || 0,
+      wonValue: p.wonValue || 0,
+      conversion: p.conversion || 0,
+    });
+  }
+  for (const prospect of prospects) {
+    if (prospect.createdBy && inPeriod(prospect.createdAt) && wanted(keyOf(prospect.createdBy))) {
+      row(keyOf(prospect.createdBy)).leadsCaptured += 1;
+    }
+    if (prospect.classifiedBy && inPeriod(prospect.classifiedAt) && wanted(keyOf(prospect.classifiedBy))) {
+      row(keyOf(prospect.classifiedBy)).leadsLinked += 1;
+    }
+  }
+  for (const r of ageingRows) {
+    if (!wanted(r.executiveId)) continue;
+    const s = row(r.executiveId);
+    s.openEnquiries += 1;
+    if (r.overdue) s.overTat += 1;
+  }
+  for (const enquiry of enquiries) {
+    const key = keyOf(enquiry.lead?.assignedTo);
+    if (!wanted(key)) continue;
+    const first = firstProposalAt(enquiry);
+    if (!first || !inPeriod(first)) continue;
+    const days = firstResponseDays(enquiry);
+    if (days !== null) row(key).responseDays.push(days);
+  }
+
+  return [...rows.values()]
+    .map(({ responseDays, ...r }) => ({ ...r, responded: responseDays.length, avgFirstResponseDays: average(responseDays) }))
+    .filter((r) => r.leadsCaptured || r.leadsLinked || r.enquiries || r.proposalsSent || r.won || r.openEnquiries || r.responded)
+    .sort(
+      (a, b) =>
+        b.wonValue - a.wonValue ||
+        b.enquiries - a.enquiries ||
+        b.leadsCaptured - a.leadsCaptured ||
+        a.executive.localeCompare(b.executive)
+    );
+}
+
 /* --------------------------------- Report ---------------------------------- */
 
 /**
@@ -140,21 +415,30 @@ export async function getTeamReport(filters = {}) {
   const now = new Date();
   const today = dayStart(now);
 
-  const [users, leads, enquiries, logs, sheets, estimates] = await Promise.all([
+  const [users, leads, enquiries, logs, sheets, estimates, prospects, settings] = await Promise.all([
     User.find().select('name email role isActive').sort({ name: 1 }).lean(),
-    Lead.find().select('businessName reference assignedTo createdAt followUps actionPoints visitReports').lean(),
+    Lead.find().select('businessName reference leadType assignedTo createdAt followUps actionPoints visitReports').lean(),
     Enquiry.find()
-      .select('lead stage stageHistory functions.proposedRate functions.rackRate functions.lineRates functions.date functions.pax proposal contract advance won lostAt cancellation waitlist emails contactName createdAt')
-      .populate({ path: 'lead', select: 'businessName reference assignedTo' })
+      .select(
+        'lead stage stageHistory functions.proposedRate functions.rackRate functions.lineRates functions.date functions.pax proposal contract advance ' +
+          'payments.milestones.status payments.milestones.amount payments.milestones.received issues.document issues.generatedAt ' +
+          'won lostAt cancellation waitlist emails contactName createdAt'
+      )
+      .populate({ path: 'lead', select: 'businessName reference leadType assignedTo' })
       .lean(),
     AuditLog.find({ createdAt: { $gte: from, $lte: to } }).sort({ createdAt: -1 }).populate('actor', 'name').lean(),
     FunctionProspectus.find({ createdAt: { $gte: from, $lte: to } }).select('madeBy').lean(),
     BanquetEstimate.find({ createdAt: { $gte: from, $lte: to } }).select('madeBy').lean(),
+    // Person leads captured or linked to a company / individual in the period.
+    Prospect.find({ $or: [{ createdAt: { $gte: from, $lte: to } }, { classifiedAt: { $gte: from, $lte: to } }] })
+      .select('createdBy createdAt classifiedBy classifiedAt')
+      .lean(),
+    getSettings(),
   ]);
+  const tat = stageTatDays(settings);
 
   const userName = new Map(users.map((u) => [String(u._id), u.name]));
   const nameOf = (id) => (id === UNASSIGNED ? 'Unassigned' : userName.get(String(id)) || 'Former user');
-  const keyOf = (id) => (id ? String(id) : UNASSIGNED);
   const wanted = (key) => !only || key === only;
 
   /* ------------------------------ Performance ------------------------------ */
@@ -172,7 +456,7 @@ export async function getTeamReport(filters = {}) {
         wonValue: 0,
         lost: 0,
         cancelled: 0,
-        advanceCollected: 0,
+        collected: 0,
         openEnquiries: 0,
         openValue: 0,
         daysToWin: [],
@@ -195,7 +479,7 @@ export async function getTeamReport(filters = {}) {
     if (inPeriod(enquiry.createdAt)) row.enquiries += 1;
     if (inPeriod(enquiry.proposal?.sentAt)) row.proposalsSent += 1;
     if (inPeriod(enquiry.contract?.sentAt)) row.contractsSent += 1;
-    const wonAt = enquiry.won?.at || (enquiry.stageHistory || []).find((h) => h.stage === 'won')?.at;
+    const wonAt = wonAtOf(enquiry);
     if (wonAt && inPeriod(wonAt)) {
       row.won += 1;
       row.wonValue += value;
@@ -203,9 +487,8 @@ export async function getTeamReport(filters = {}) {
     }
     if (inPeriod(enquiry.lostAt)) row.lost += 1;
     if (inPeriod(enquiry.cancellation?.at)) row.cancelled += 1;
-    if (enquiry.advance?.received && inPeriod(enquiry.advance.date || enquiry.advance.recordedAt)) {
-      row.advanceCollected += parseAmount(enquiry.advance.amount);
-    }
+    // Received milestones in the period, else the legacy advance (as on Clients).
+    row.collected += collectedInPeriod(enquiry, inPeriod);
     if (OPEN_STAGES.includes(enquiry.stage)) {
       row.openEnquiries += 1;
       row.openValue += value;
@@ -216,7 +499,7 @@ export async function getTeamReport(filters = {}) {
       ...row,
       wonValue: Math.round(row.wonValue),
       openValue: Math.round(row.openValue),
-      advanceCollected: Math.round(row.advanceCollected),
+      collected: Math.round(row.collected),
       // Of the enquiries that closed in the period, the share that were won.
       conversion: percent(row.won, row.won + row.lost + row.cancelled),
       avgDaysToWin: average(daysToWin),
@@ -285,35 +568,13 @@ export async function getTeamReport(filters = {}) {
     .sort((a, b) => b.actions - a.actions || a.user.localeCompare(b.user));
 
   /* ----------------------------- Pipeline ageing ---------------------------- */
-  const ageingRows = enquiries
-    .filter((e) => OPEN_STAGES.includes(e.stage) && wanted(keyOf(e.lead?.assignedTo)))
-    .map((e) => {
-      const entered = enteredCurrentStage(e);
-      const days = Math.max(0, Math.floor((now - entered) / DAY));
-      const dates = (e.functions || []).map((f) => f.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
-      return {
-        enquiryId: String(e._id),
-        businessName: e.lead?.businessName || e.contactName || 'Guest',
-        reference: e.lead?.reference || '',
-        executive: nameOf(keyOf(e.lead?.assignedTo)),
-        stage: e.stage,
-        stageLabel: STAGE_LABELS[e.stage],
-        enteredAt: entered,
-        days,
-        limit: STAGE_LIMIT_DAYS[e.stage],
-        overdue: days > STAGE_LIMIT_DAYS[e.stage],
-        value: Math.round(enquiryValue(e)),
-        firstDate: dates[0] || null,
-        contactName: e.contactName || '',
-      };
-    })
-    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.days - a.days);
+  const ageingRows = buildAgeingRows({ enquiries, tat, now, executive: only, nameOf });
   const ageingByStage = OPEN_STAGES.map((stage) => {
     const rows = ageingRows.filter((r) => r.stage === stage);
     return {
       stage,
       label: STAGE_LABELS[stage],
-      limit: STAGE_LIMIT_DAYS[stage],
+      limit: tat[stage],
       count: rows.length,
       overdue: rows.filter((r) => r.overdue).length,
       avgDays: average(rows.map((r) => r.days)),
@@ -321,6 +582,11 @@ export async function getTeamReport(filters = {}) {
       value: rows.reduce((sum, r) => sum + r.value, 0),
     };
   });
+
+  /* ------------------------ Clients and the scorecard ----------------------- */
+  const period = { from, to };
+  const clients = buildClientRows({ leads, enquiries, period, executive: only, nameOf });
+  const scorecard = buildScorecard({ performance, prospects, enquiries, ageingRows, period, executive: only, nameOf });
 
   /* ---------------------------------- Audit --------------------------------- */
   const auditLogs = logs.filter((log) => !only || String(log.actor?._id || log.actor || '') === only);
@@ -378,9 +644,9 @@ export async function getTeamReport(filters = {}) {
       wonValue: t.wonValue + r.wonValue,
       lost: t.lost + r.lost,
       cancelled: t.cancelled + r.cancelled,
-      advanceCollected: t.advanceCollected + r.advanceCollected,
+      collected: t.collected + r.collected,
     }),
-    { enquiries: 0, won: 0, wonValue: 0, lost: 0, cancelled: 0, advanceCollected: 0 }
+    { enquiries: 0, won: 0, wonValue: 0, lost: 0, cancelled: 0, collected: 0 }
   );
 
   return {
@@ -393,9 +659,16 @@ export async function getTeamReport(filters = {}) {
       stuck: ageingRows.filter((r) => r.overdue).length,
       auditActions: audit.total,
       activeUsers: audit.byUser.length,
+      activeClients: clients.length,
+      repeatClients: clients.filter((c) => c.repeat).length,
+      leadsCaptured: scorecard.reduce((sum, r) => sum + r.leadsCaptured, 0),
+      leadsLinked: scorecard.reduce((sum, r) => sum + r.leadsLinked, 0),
     },
+    tat,
     performance,
+    scorecard,
     productivity,
+    clients,
     ageing: { byStage: ageingByStage, rows: ageingRows },
     audit,
   };
@@ -443,11 +716,15 @@ export async function generateTeamExcel(filters = {}) {
     ['Lost', s.lost],
     ['Cancelled', s.cancelled],
     ['Conversion (won / closed) %', s.conversion],
-    ['Advance collected (Rs.)', s.advanceCollected],
+    ['Collected (Rs.)', s.collected],
     ['Open enquiries now', s.openEnquiries],
-    ['Stuck past their stage limit', s.stuck],
+    ['Stuck past their stage TAT', s.stuck],
     ['Actions in the audit log', s.auditActions],
     ['People active', s.activeUsers],
+    ['Active clients', s.activeClients],
+    ['Repeat clients (2+ enquiries ever)', s.repeatClients],
+    ['Leads captured', s.leadsCaptured],
+    ['Leads linked', s.leadsLinked],
   ].forEach(([measure, value]) => summary.addRow({ measure, value }));
 
   const perf = addSheet(workbook, 'Executive performance', [
@@ -462,11 +739,27 @@ export async function generateTeamExcel(filters = {}) {
     { header: 'Cancelled', key: 'cancelled', width: 11 },
     { header: 'Conversion %', key: 'conversion', width: 13 },
     { header: 'Avg days to win', key: 'avgDaysToWin', width: 16 },
-    { header: 'Advance collected (Rs.)', key: 'advanceCollected', width: 22, style: MONEY_FMT },
+    { header: 'Collected (Rs.)', key: 'collected', width: 16, style: MONEY_FMT },
     { header: 'Open enquiries', key: 'openEnquiries', width: 15 },
     { header: 'Open value (Rs.)', key: 'openValue', width: 17, style: MONEY_FMT },
   ]);
   data.performance.forEach((r) => perf.addRow(r));
+
+  const score = addSheet(workbook, 'Salesperson scorecard', [
+    { header: 'Executive', key: 'executive', width: 24 },
+    { header: 'Leads captured', key: 'leadsCaptured', width: 15 },
+    { header: 'Leads linked', key: 'leadsLinked', width: 13 },
+    { header: 'Enquiries raised', key: 'enquiries', width: 16 },
+    { header: 'Proposals sent', key: 'proposalsSent', width: 15 },
+    { header: 'Won', key: 'won', width: 8 },
+    { header: 'Won value (Rs.)', key: 'wonValue', width: 17, style: MONEY_FMT },
+    { header: 'Conversion %', key: 'conversion', width: 13 },
+    { header: 'Open enquiries (now)', key: 'openEnquiries', width: 20 },
+    { header: 'Over TAT (now)', key: 'overTat', width: 15 },
+    { header: 'First proposals made', key: 'responded', width: 20 },
+    { header: 'Avg days to first proposal', key: 'avgFirstResponseDays', width: 26 },
+  ]);
+  data.scorecard.forEach((r) => score.addRow({ ...r, avgFirstResponseDays: r.responded ? r.avgFirstResponseDays : null }));
 
   const prod = addSheet(workbook, 'Executive productivity', [
     { header: 'Person', key: 'user', width: 24 },
@@ -484,6 +777,28 @@ export async function generateTeamExcel(filters = {}) {
   ]);
   data.productivity.forEach((r) => prod.addRow({ ...r, lastActive: asDate(r.lastActive) }));
 
+  const clients = addSheet(workbook, 'Client productivity', [
+    { header: 'Client', key: 'client', width: 32 },
+    { header: 'Lead Ref', key: 'reference', width: 18 },
+    { header: 'Type', key: 'leadTypeLabel', width: 12 },
+    { header: 'Executive', key: 'executive', width: 22 },
+    { header: 'Enquiries raised', key: 'enquiries', width: 16 },
+    { header: 'Proposals sent', key: 'proposalsSent', width: 15 },
+    { header: 'Won', key: 'won', width: 8 },
+    { header: 'Lost', key: 'lost', width: 8 },
+    { header: 'Cancelled', key: 'cancelled', width: 11 },
+    { header: 'Conversion %', key: 'conversion', width: 13 },
+    { header: 'Won value (Rs.)', key: 'wonValue', width: 17, style: MONEY_FMT },
+    { header: 'Open pipeline (Rs.)', key: 'openValue', width: 19, style: MONEY_FMT },
+    { header: 'Collected (Rs.)', key: 'collected', width: 16, style: MONEY_FMT },
+    { header: 'Avg days to win', key: 'avgDaysToWin', width: 16 },
+    { header: 'Last enquiry', key: 'lastEnquiryAt', width: 15, style: DATE_FMT },
+    { header: 'Enquiries (all time)', key: 'totalEnquiries', width: 19 },
+  ]);
+  data.clients.forEach((r) =>
+    clients.addRow({ ...r, avgDaysToWin: r.won ? r.avgDaysToWin : null, lastEnquiryAt: asDate(r.lastEnquiryAt) })
+  );
+
   const ageing = addSheet(workbook, 'Pipeline ageing', [
     { header: 'Company / Guest', key: 'businessName', width: 30 },
     { header: 'Lead Ref', key: 'reference', width: 18 },
@@ -491,7 +806,7 @@ export async function generateTeamExcel(filters = {}) {
     { header: 'Stage', key: 'stageLabel', width: 14 },
     { header: 'In stage since', key: 'enteredAt', width: 16, style: DATE_FMT },
     { header: 'Days in stage', key: 'days', width: 14 },
-    { header: 'Limit (days)', key: 'limit', width: 13 },
+    { header: 'TAT (days)', key: 'limit', width: 12 },
     { header: 'Stuck', key: 'overdue', width: 8 },
     { header: 'Value (Rs.)', key: 'value', width: 15, style: MONEY_FMT },
     { header: 'First function date', key: 'firstDate', width: 19, style: DATE_FMT },

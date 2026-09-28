@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { toast } from 'sonner';
 import {
   BedDouble,
@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Eye,
   EyeOff,
+  Hourglass,
   KanbanSquare,
   MapPin,
   Plus,
@@ -17,8 +18,15 @@ import {
 } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { ENQUIRY_STAGES, stageInfo, isDatePassed } from '@/lib/enquiryStages';
+import {
+  ENQUIRY_STAGES,
+  CLOSED_STAGE_KEYS,
+  stageInfo,
+  isDatePassed,
+  tatStatus,
+} from '@/lib/enquiryStages';
 import { BoardFilters, FilterToggle, activeFilterCount } from '@/components/BoardFilters';
 import { fnVenues, fnSessions } from '@/lib/banquetFunctions';
 import { departmentLabel, isIndividual } from '@/lib/departments';
@@ -26,6 +34,7 @@ import {
   fnLabel,
   fnVenueNames,
   fnSessionNames,
+  fnAmount,
   fnAmountLabel,
 } from '@/lib/banquetFunctions';
 
@@ -53,16 +62,110 @@ function roomDate(value) {
   }
 }
 
+/** The hotel units a lead can be contacted for. */
+const UNITS = ['CPA', 'CPH', 'CPNM'];
+
+/** An event this many days out (today included) makes an open enquiry high priority. */
+const SOON_DAYS = 7;
+
+/** An open enquiry created more than this many days ago is flagged as not closed in 2 weeks. */
+const STALE_DAYS = 14;
+
+const NO_FLAGS = { soonIn: null, openDays: null, tat: null };
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/** A lead's units as a list (older leads hold a single string). */
+function leadUnits(lead) {
+  const value = lead && typeof lead === 'object' ? lead.contactedFor : null;
+  return Array.isArray(value) ? value : value ? [value] : [];
+}
+
+/**
+ * The enquiry's booking value: every function's offered amount (proposed,
+ * falling back to rack). Only an enquiry with no functions falls back to the
+ * free-text estimated revenue, counted when it is a plain number.
+ */
+function enquiryTotal(enquiry) {
+  const fns = enquiry?.functions || [];
+  if (fns.length) return fns.reduce((sum, fn) => sum + fnAmount(fn), 0);
+  const digits = String(enquiry?.estimatedRevenue || '')
+    .replace(/[,\s]/g, '')
+    .replace(/^(rs\.?|inr|₹)/i, '');
+  return /^\d+(\.\d+)?$/.test(digits) ? Number(digits) : 0;
+}
+
+/**
+ * Highlights for an open enquiry (never won, lost or cancelled):
+ *  - soonIn: days to the nearest function date / room check-in that falls
+ *    between today and 7 days from today (inclusive) — high priority;
+ *  - openDays: days since it was created, when that is more than 14;
+ *  - tat: the tatStatus() result when it has sat in its stage over the TAT.
+ */
+function enquiryFlags(enquiry, tatDays, now) {
+  if (!enquiry || CLOSED_STAGE_KEYS.includes(enquiry.stage)) return NO_FLAGS;
+  const dates = (enquiry.functions || []).map((fn) => fn?.date);
+  if (enquiry.kind !== 'banquet' && enquiry.room?.checkIn) dates.push(enquiry.room.checkIn);
+  let soonIn = null;
+  for (const value of dates) {
+    if (!value) continue;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) continue;
+    const diff = differenceInCalendarDays(date, now);
+    if (diff >= 0 && diff <= SOON_DAYS && (soonIn === null || diff < soonIn)) soonIn = diff;
+  }
+  const created = enquiry.createdAt ? new Date(enquiry.createdAt) : null;
+  const openDays =
+    created && !Number.isNaN(created.getTime()) ? differenceInCalendarDays(now, created) : null;
+  const tat = tatStatus(enquiry, tatDays, now);
+  return {
+    soonIn,
+    openDays: openDays !== null && openDays > STALE_DAYS ? openDays : null,
+    tat: tat?.over ? tat : null,
+  };
+}
+
+function soonLabel(days) {
+  if (days === 0) return 'Event today';
+  if (days === 1) return 'Event tomorrow';
+  return `Event in ${days} days`;
+}
+
 /** One enquiry on the board: who, which department, what, when, where. */
-function EnquiryCard({ enquiry, onOpen }) {
+function EnquiryCard({ enquiry, flags = NO_FLAGS, onOpen }) {
   const lead = enquiry.lead && typeof enquiry.lead === 'object' ? enquiry.lead : null;
   const firstFn = enquiry.functions?.[0];
   const room = enquiry.kind !== 'banquet' ? enquiry.room : null;
   const dept = departmentLabel(lead, enquiry.department);
   const Icon = isIndividual(lead) ? User : Building2;
   const info = stageInfo(enquiry.stage);
+  const soon = flags.soonIn !== null;
+  const stale = flags.openDays !== null;
+  const tatLabel = flags.tat ? `Over TAT · ${plural(flags.tat.days, 'day')} in ${info.label}` : '';
+  const ariaLabel = [
+    lead?.businessName || 'Lead',
+    info.label,
+    soon ? soonLabel(flags.soonIn) : '',
+    stale ? `Open ${flags.openDays} days` : '',
+    tatLabel,
+  ]
+    .filter(Boolean)
+    .join(' — ');
   return (
-    <KanbanCard onClick={onOpen} aria-label={`${lead?.businessName || 'Lead'} — ${info.label}`}>
+    <KanbanCard
+      onClick={onOpen}
+      aria-label={ariaLabel}
+      className={cn(
+        // Red (event within 7 days) wins the ring over amber (open over 2 weeks).
+        soon
+          ? 'border-destructive/50 border-l-4 border-l-destructive hover:border-destructive/70 hover:border-l-destructive'
+          : stale
+            ? 'border-amber-500/50 border-l-4 border-l-amber-500 hover:border-amber-500/70 hover:border-l-amber-500'
+            : ''
+      )}
+    >
       <div className="flex items-start gap-2">
         <span
           className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
@@ -77,8 +180,27 @@ function EnquiryCard({ enquiry, onOpen }) {
           {dept ? <p className="truncate text-xs font-medium text-primary">{dept}</p> : null}
         </div>
       </div>
-      {enquiry.stage === 'waitlist' || enquiry.waitlist?.freedAt || isDatePassed(enquiry) ? (
+      {soon || stale || flags.tat || enquiry.stage === 'waitlist' || enquiry.waitlist?.freedAt || isDatePassed(enquiry) ? (
         <div className="mt-2 flex flex-wrap gap-1">
+          {soon ? (
+            <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+              {soonLabel(flags.soonIn)}
+            </span>
+          ) : null}
+          {stale ? (
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+              Open {flags.openDays} days
+            </span>
+          ) : null}
+          {flags.tat ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground"
+              title={`${info.label} TAT is ${plural(flags.tat.limit, 'day')}`}
+            >
+              <Hourglass className="h-3 w-3 shrink-0" aria-hidden="true" />
+              {tatLabel}
+            </span>
+          ) : null}
           {enquiry.stage === 'waitlist' ? (
             <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
               Held by {enquiry.waitlist?.heldByName || 'another enquiry'}
@@ -161,7 +283,28 @@ function EnquiryCard({ enquiry, onOpen }) {
  * as actions happen (generate → email proposal → email contract); Won and
  * Lost are the manual moves, done from the enquiry itself.
  */
-const EMPTY_FILTERS = { venue: '', session: '', functionType: '', kind: '', assignedTo: '', from: '', to: '' };
+const EMPTY_FILTERS = {
+  venue: '',
+  session: '',
+  functionType: '',
+  kind: '',
+  unit: '',
+  assignedTo: '',
+  priority: '',
+  from: '',
+  to: '',
+  createdFrom: '',
+  createdTo: '',
+  valueMin: '',
+  valueMax: '',
+};
+
+/** A number filter's value, or null when it is blank or not a number. */
+function numberOrNull(value) {
+  if (value === '' || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 function dateKey(value) {
   if (!value) return '';
@@ -234,10 +377,22 @@ export default function EnquiriesBoardPage() {
     return () => clearTimeout(t);
   }, [load, q]);
 
+  // Card highlights (event within 7 days, open over 2 weeks, over TAT) — one
+  // pass per load, shared by the cards, the Priority filter and the legend.
+  const tatDays = config?.settings?.stageTatDays;
+  const flagsById = useMemo(() => {
+    const now = new Date();
+    const map = new Map();
+    for (const e of enquiries || []) map.set(e._id, enquiryFlags(e, tatDays, now));
+    return map;
+  }, [enquiries, tatDays]);
+
   // Client-side filters over the loaded board (functions are populated).
   const filtered = useMemo(() => {
     const f = filters;
     const needsFn = f.venue || f.session || f.functionType || f.from || f.to;
+    const valueMin = numberOrNull(f.valueMin);
+    const valueMax = numberOrNull(f.valueMax);
     const fnMatch = (fn) => {
       if (f.venue && !fnVenues(fn).some((v) => String(v?._id || v) === f.venue)) return false;
       if (f.session && !fnSessions(fn).some((s) => String(s?._id || s) === f.session)) return false;
@@ -254,9 +409,26 @@ export default function EnquiriesBoardPage() {
         if (String(owner?._id || owner || '') !== f.assignedTo) return false;
       }
       if (needsFn && !(e.functions || []).some(fnMatch)) return false;
+      if (f.unit && !leadUnits(e.lead).includes(f.unit)) return false;
+      if (f.createdFrom || f.createdTo) {
+        const key = dateKey(e.createdAt);
+        if (f.createdFrom && (!key || key < f.createdFrom)) return false;
+        if (f.createdTo && (!key || key > f.createdTo)) return false;
+      }
+      if (valueMin !== null || valueMax !== null) {
+        const total = enquiryTotal(e);
+        if (valueMin !== null && total < valueMin) return false;
+        if (valueMax !== null && total > valueMax) return false;
+      }
+      if (f.priority) {
+        const flags = flagsById.get(e._id) || NO_FLAGS;
+        if (f.priority === 'high' && flags.soonIn === null) return false;
+        if (f.priority === 'stale' && flags.openDays === null) return false;
+        if (f.priority === 'tat' && !flags.tat) return false;
+      }
       return true;
     });
-  }, [enquiries, filters]);
+  }, [enquiries, filters, flagsById]);
 
   // Each column header carries the total value proposed in that stage.
   const columns = useMemo(() => {
@@ -278,6 +450,16 @@ export default function EnquiriesBoardPage() {
   const won = filtered.filter((e) => e.stage === 'won').length;
   const awaiting = filtered.filter((e) => ['waitlist', 'provisional'].includes(e.stage)).length;
   const filterCount = activeFilterCount(filters);
+  const highlightCounts = filtered.reduce(
+    (acc, e) => {
+      const flags = flagsById.get(e._id) || NO_FLAGS;
+      if (flags.soonIn !== null) acc.soon += 1;
+      if (flags.openDays !== null) acc.stale += 1;
+      if (flags.tat) acc.tat += 1;
+      return acc;
+    },
+    { soon: 0, stale: 0, tat: 0 }
+  );
 
   const filterFields = [
     {
@@ -308,6 +490,12 @@ export default function EnquiriesBoardPage() {
       ],
       placeholder: 'Anything',
     },
+    {
+      key: 'unit',
+      label: 'Unit',
+      options: UNITS.map((u) => ({ value: u, label: u })),
+      placeholder: 'Any unit',
+    },
     ...(isAdmin
       ? [
           {
@@ -318,8 +506,28 @@ export default function EnquiriesBoardPage() {
           },
         ]
       : []),
-    { key: 'from', label: 'Function from', type: 'date' },
-    { key: 'to', label: 'Function to', type: 'date', min: filters.from || undefined },
+    {
+      key: 'priority',
+      label: 'Priority',
+      options: [
+        { value: 'high', label: 'High priority' },
+        { value: 'stale', label: 'Not closed in 2 weeks' },
+        { value: 'tat', label: 'Over TAT' },
+      ],
+      placeholder: 'All',
+    },
+    { key: 'from', label: 'Event from', type: 'date' },
+    { key: 'to', label: 'Event to', type: 'date', min: filters.from || undefined },
+    { key: 'createdFrom', label: 'Created from', type: 'date' },
+    { key: 'createdTo', label: 'Created to', type: 'date', min: filters.createdFrom || undefined },
+    { key: 'valueMin', label: 'Booking value min (₹)', type: 'number', placeholder: 'No minimum' },
+    {
+      key: 'valueMax',
+      label: 'Booking value max (₹)',
+      type: 'number',
+      placeholder: 'No maximum',
+      min: numberOrNull(filters.valueMin) ?? 0,
+    },
   ];
 
   return (
@@ -408,15 +616,40 @@ export default function EnquiriesBoardPage() {
           }
         />
       ) : (
-        <KanbanBoard
-          columns={columns}
-          renderCard={(enquiry) => (
-            <EnquiryCard
-              enquiry={enquiry}
-              onOpen={() => navigate(`/enquiries/${enquiry._id}`)}
-            />
-          )}
-        />
+        <div className="space-y-2">
+          {/* What the card colours mean, with how many of each are in view. */}
+          <div
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+            role="group"
+            aria-label="Card highlights"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+              Event within 7 days
+              <span className="font-semibold tabular-nums text-foreground">{highlightCounts.soon}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              Open over 2 weeks
+              <span className="font-semibold tabular-nums text-foreground">{highlightCounts.stale}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Hourglass className="h-3 w-3 shrink-0" aria-hidden="true" />
+              Over TAT
+              <span className="font-semibold tabular-nums text-foreground">{highlightCounts.tat}</span>
+            </span>
+          </div>
+          <KanbanBoard
+            columns={columns}
+            renderCard={(enquiry) => (
+              <EnquiryCard
+                enquiry={enquiry}
+                flags={flagsById.get(enquiry._id) || NO_FLAGS}
+                onOpen={() => navigate(`/enquiries/${enquiry._id}`)}
+              />
+            )}
+          />
+        </div>
       )}
 
       <LeadPickerDialog

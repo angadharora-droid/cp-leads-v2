@@ -290,7 +290,7 @@ function LeadsListPage() {
     <div className="space-y-5">
       {/* "New lead" lives in the top bar on every page, so the header here
           carries the heading for screen readers only. */}
-      <PageHeader title="Leads" />
+      <PageHeader title="Companies & Individuals" />
 
       {/* Filter bar */}
       <Card>
@@ -425,11 +425,11 @@ function LeadsListPage() {
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)
         ) : items.length === 0 ? (
           <EmptyState
-            title={hasActiveFilters ? 'No matching leads' : 'No leads yet'}
+            title={hasActiveFilters ? 'No matching records' : 'No companies or individuals yet'}
             description={
               hasActiveFilters
                 ? 'Try adjusting or clearing your filters.'
-                : 'Create your first lead to start tracking the pipeline.'
+                : 'Create a lead and link it to a company or individual — it will appear here.'
             }
             action={
               hasActiveFilters ? (
@@ -437,7 +437,7 @@ function LeadsListPage() {
                   Clear filters
                 </Button>
               ) : (
-                <Button size="sm" onClick={() => navigate('/leads/new')}>
+                <Button size="sm" onClick={() => navigate('/prospects/new')}>
                   <Plus className="h-4 w-4" />
                   New lead
                 </Button>
@@ -523,11 +523,11 @@ function LeadsListPage() {
                   <TableCell colSpan={colSpan} className="p-0">
                     <EmptyState
                       className="rounded-none border-0"
-                      title={hasActiveFilters ? 'No matching leads' : 'No leads yet'}
+                      title={hasActiveFilters ? 'No matching records' : 'No companies or individuals yet'}
                       description={
                         hasActiveFilters
                           ? 'Try adjusting or clearing your filters.'
-                          : 'Create your first lead to start tracking the pipeline.'
+                          : 'Create a lead and link it to a company or individual — it will appear here.'
                       }
                       action={
                         hasActiveFilters ? (
@@ -535,7 +535,7 @@ function LeadsListPage() {
                             Clear filters
                           </Button>
                         ) : (
-                          <Button size="sm" onClick={() => navigate('/leads/new')}>
+                          <Button size="sm" onClick={() => navigate('/prospects/new')}>
                             <Plus className="h-4 w-4" />
                             New lead
                           </Button>
@@ -606,7 +606,7 @@ function LeadsListPage() {
           page={filters.page}
           limit={filters.limit}
           total={total}
-          noun="leads"
+          noun="records"
           onPageChange={(page) => updateParams({ page })}
           onLimitChange={(limit) => updateParams({ limit, page: 1 })}
         />

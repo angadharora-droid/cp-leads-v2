@@ -14,6 +14,13 @@ const banquetSessionSchema = new Schema(
     endTime: { type: String, default: '' },
     active: { type: Boolean, default: true },
     order: { type: Number, default: 0 },
+    // Revenue a sales person should aim for from one function in this
+    // session, by how much demand the date has (Banquet Setup → demand dates).
+    targets: {
+      normal: { type: Number, default: 0, min: 0 },
+      high: { type: Number, default: 0, min: 0 },
+      peak: { type: Number, default: 0, min: 0 },
+    },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

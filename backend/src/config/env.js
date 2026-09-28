@@ -38,6 +38,12 @@ const env = {
   // does not invalidate stored mailbox credentials.
   CRED_ENCRYPTION_KEY:
     process.env.CRED_ENCRYPTION_KEY || process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_me',
+
+  // Claude API, for reading GST / PAN documents and checking menus. Both
+  // features stay available without it: numbers are typed in by hand and the
+  // menu check is switched off.
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  AI_MODEL: process.env.AI_MODEL || 'claude-opus-5',
 };
 
 env.isProduction = env.NODE_ENV === 'production';

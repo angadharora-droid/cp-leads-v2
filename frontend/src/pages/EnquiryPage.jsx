@@ -27,7 +27,7 @@ import { api, getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import ActivityPanel from '@/components/enquiries/ActivityPanel';
 import { cn } from '@/lib/utils';
-import { ENQUIRY_STAGES, CLOSED_STAGE_KEYS, stageInfo, advanceModeLabel, advanceOutcomeLabel, editLabelFor } from '@/lib/enquiryStages';
+import { ENQUIRY_STAGES, CLOSED_STAGE_KEYS, stageInfo, advanceModeLabel, advanceOutcomeLabel, editLabelFor, tatStatus } from '@/lib/enquiryStages';
 import { departmentLabel, isIndividual } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
@@ -44,6 +44,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import StageBadge from '@/components/enquiries/StageBadge';
 import EnquiryDialog from '@/components/enquiries/EnquiryDialog';
 import EnquiryLifecycle from '@/components/enquiries/EnquiryLifecycle';
+import PaymentsCard from '@/components/enquiries/PaymentsCard';
 import { EnquiryActionBar, EnquiryNotices, openBlob, saveBlob } from '@/components/enquiries/EnquiryActions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,6 +67,7 @@ const EMAIL_KIND_LABELS = {
   proforma: 'Pro-forma invoice',
   addendum: 'Addendum + revised pro-forma',
   signed: 'Signed copy',
+  payment_request: 'Payment request',
 };
 
 /** Horizontal funnel stepper: enquiry → proposal → provisional → won. */
@@ -332,6 +334,8 @@ export default function EnquiryPage() {
   const closed = CLOSED_STAGE_KEYS.includes(enquiry.stage);
   const emails = [...(enquiry.emails || [])].reverse();
   const wonOnCredit = enquiry.stage === 'won' && enquiry.won?.basis === 'credit';
+  // Days in the current stage against its turnaround time (Banquet Setup).
+  const tat = tatStatus(enquiry, config?.settings?.stageTatDays);
 
   return (
     <div className="space-y-6">
@@ -411,6 +415,17 @@ export default function EnquiryPage() {
       <EnquiryFunnel enquiry={enquiry} />
 
       <EnquiryNotices enquiry={enquiry} onChanged={() => load({ silent: true })} onMarkLost={() => setLostOpen(true)} />
+
+      {tat?.over ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <span className="font-medium">Over TAT</span> — {tat.days} days in {stageInfo(enquiry.stage).label}, the limit is {tat.limit} day
+          {tat.limit === 1 ? '' : 's'} ({tat.overBy} over).
+        </p>
+      ) : tat ? (
+        <p className="text-xs text-muted-foreground">
+          {tat.days} of {tat.limit} days used in {stageInfo(enquiry.stage).label} (stage TAT).
+        </p>
+      ) : null}
 
       {enquiry.stage === 'lost' ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -590,6 +605,13 @@ export default function EnquiryPage() {
             </CardContent>
           </Card>
 
+          {['provisional', 'won'].includes(enquiry.stage) || enquiry.payments?.milestones?.length ? (
+            <PaymentsCard
+              enquiry={enquiry}
+              isManager={['admin', 'manager'].includes(user?.role)}
+              onChanged={(next) => (next ? setEnquiry(next) : load({ silent: true }))}
+            />
+          ) : null}
         </div>
 
         <div className="space-y-6">

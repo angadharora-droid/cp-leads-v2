@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Lead from '../models/Lead.js';
+import Prospect from '../models/Prospect.js';
 
 /**
  * Aggregate OPEN follow-ups and OPEN instructions across leads the current
@@ -97,6 +98,28 @@ export async function getMyFollowUps(currentUser) {
         businessName,
         text: ins.text || '',
         issuedAt: ins.createdAt || null,
+      });
+    }
+  }
+
+  // Leads not yet linked to a company / individual keep their own follow-ups.
+  const prospectMatch = { classifiedAt: { $exists: false }, 'followUps.status': 'open' };
+  if (match.assignedTo) prospectMatch.assignedTo = match.assignedTo;
+  const prospects = await Prospect.find(prospectMatch).select('name city followUps').lean();
+  for (const prospect of prospects) {
+    for (const fu of prospect.followUps || []) {
+      if (fu.status !== 'open') continue;
+      followUps.push({
+        prospectId: String(prospect._id),
+        leadId: null,
+        enquiryId: null,
+        followUpId: fu._id ? String(fu._id) : null,
+        reference: 'New lead',
+        businessName: prospect.name || '',
+        city: prospect.city || '',
+        dueDate: fu.dueDate || null,
+        note: fu.note || '',
+        status: 'open',
       });
     }
   }

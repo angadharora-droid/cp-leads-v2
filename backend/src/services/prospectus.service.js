@@ -285,7 +285,8 @@ function bookingFields(enquiry, fn) {
   // The liquor picked and the other requirements (AV and the like, plus the
   // typed additional requirement) are lists, one per line.
   const courses = packageCourses(fn);
-  const addOns = names(fn.addOns);
+  // Special menu items (not in Banquet Setup) go in with the add-ons.
+  const addOns = [...names(fn.addOns), ...(fn.specialItems || []).map((item) => item?.name).filter(Boolean)];
   for (const item of addOns) placeInCourse(courses, item);
   const food = courses.length ? [] : [...names([fn.menuType]), ...addOns];
   const liquor = names(fn.liquor);
@@ -579,14 +580,26 @@ const EDITABLE = [
   'boardToRead',
   'deptInstruction',
   'specialInstructions',
+  'goldenPoints',
   'liquorMenu',
   'otherRequirements',
 ];
 
+/** Golden points as stored: trimmed, the empty ones dropped, three at most. */
+export function cleanGoldenPoints(points) {
+  return (Array.isArray(points) ? points : [])
+    .map((p) => String(p ?? '').trim().slice(0, 200))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+// Editable fields that are tidied on the way in rather than copied as sent.
+const NORMALISE = { goldenPoints: cleanGoldenPoints };
+
 export async function updateProspectus(id, body, actor, req) {
   const fp = await loadProspectus(id, actor);
   for (const field of EDITABLE) {
-    if (body[field] !== undefined) fp[field] = body[field];
+    if (body[field] !== undefined) fp[field] = NORMALISE[field] ? NORMALISE[field](body[field]) : body[field];
   }
   for (const field of LIST_FIELDS) {
     if (body[field] !== undefined) fp[field] = tidyList(body[field]);
@@ -628,8 +641,9 @@ export async function refreshProspectus(id, actor, req) {
   const fn = findFunction(enquiry, fp.functionId);
   const fresh = bookingFields(enquiry, fn);
   for (const [key, value] of Object.entries(fresh)) {
-    // Free text the team may have edited is left alone.
-    if (['menu', 'liquorMenu', 'otherRequirements', 'specialInstructions', 'billingInstruction'].includes(key)) continue;
+    // Free text the team may have edited is left alone (the golden points
+    // never come from the booking, so a refresh keeps them too).
+    if (['menu', 'liquorMenu', 'otherRequirements', 'specialInstructions', 'billingInstruction', 'goldenPoints'].includes(key)) continue;
     // The package's courses are re-read; dishes typed under a course that is
     // still there stay, and an old free-text menu is sorted into them.
     if (key === 'menuCourses') {

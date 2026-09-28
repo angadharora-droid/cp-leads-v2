@@ -41,6 +41,8 @@ export const updateProspectusSchema = z
     boardToRead: text(500),
     deptInstruction: text(3000),
     specialInstructions: text(3000),
+    // Up to three points the team must not miss, printed at the top of the sheet.
+    goldenPoints: z.array(z.string().trim().max(200)).max(3).optional(),
     // Dishes per course; the courses themselves are fixed by the package.
     menuCourses: z
       .array(

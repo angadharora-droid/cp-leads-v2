@@ -97,6 +97,21 @@ for (const schema of [noteSchema, actionPointSchema, followUpSchema, visitReport
   schema.add({ enquiry: { type: Schema.Types.ObjectId, ref: 'Enquiry' } });
 }
 
+/** A person at a company department — added when a lead is placed there. */
+const departmentContactSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    designation: { type: String, trim: true },
+    mobile: { type: String, trim: true },
+    email: { type: String, lowercase: true, trim: true },
+    prospect: { type: Schema.Types.ObjectId, ref: 'Prospect' },
+    addedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    addedByName: { type: String },
+    addedAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 /**
  * One node of a company's structure: a department, optionally under a
  * branch. `branch` is free text and may be empty when the company has no
@@ -107,11 +122,52 @@ const departmentSchema = new Schema(
   {
     branch: { type: String, default: '', trim: true },
     name: { type: String, required: true, trim: true },
+    contacts: { type: [departmentContactSchema], default: [] },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     createdByName: { type: String },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: true }
+);
+
+/** A GST certificate or PAN card attached when a company is registered. */
+const registrationDocSchema = new Schema(
+  {
+    kind: { type: String, enum: ['gst', 'pan'], required: true },
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    filename: { type: String },
+    contentType: { type: String },
+    size: { type: Number },
+    // What was read off the document (kept even if the numbers are edited later).
+    extracted: {
+      gstNumber: { type: String },
+      panNumber: { type: String },
+      legalName: { type: String },
+      address: { type: String },
+      readBy: { type: String, enum: ['ai', 'manual', ''], default: '' },
+    },
+    uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    uploadedByName: { type: String },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
+/**
+ * A registered company's credit line: how much it may owe, and for how long.
+ * Only registered companies get one; individuals always pay in advance.
+ */
+const creditLineSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    limit: { type: Number, default: 0, min: 0 },
+    days: { type: Number, default: 0, min: 0 },
+    notes: { type: String, default: '' },
+    approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    approvedByName: { type: String },
+    approvedAt: { type: Date },
+  },
+  { _id: false }
 );
 
 const historySchema = new Schema(
@@ -153,6 +209,14 @@ const leadSchema = new Schema(
     },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    // Company registration (managers): statutory numbers, the documents they
+    // were read from, and the credit line the company is allowed.
+    legalName: { type: String, trim: true },
+    gstNumber: { type: String, uppercase: true, trim: true },
+    panNumber: { type: String, uppercase: true, trim: true },
+    registeredAddress: { type: String, trim: true },
+    registrationDocs: { type: [registrationDocSchema], default: [] },
+    credit: { type: creditLineSchema, default: () => ({}) },
     notes: [noteSchema],
     actionPoints: [actionPointSchema],
     followUps: [followUpSchema],

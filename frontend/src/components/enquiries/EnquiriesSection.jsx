@@ -148,12 +148,23 @@ function EnquiryCard({ lead, enquiry, onChanged, onEdit, onDelete }) {
  * lead — create enquiries, generate/email proposals, make and send contracts,
  * mark won. Every enquiry opens on its own page.
  */
-function EnquiriesSection({ lead, onLeadUpdated }) {
+function EnquiriesSection({ lead, onLeadUpdated, openWith = null, onOpened }) {
   const [enquiries, setEnquiries] = useState(null);
   const [config, setConfig] = useState({ venues: [], sessions: [] });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [prefill, setPrefill] = useState(null);
+
+  // A lead that was just linked here opens the new enquiry form straight away.
+  useEffect(() => {
+    if (!openWith) return;
+    setEditing(null);
+    setPrefill(openWith);
+    setDialogOpen(true);
+    onOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(openWith)]);
 
   const load = useCallback(async () => {
     try {
@@ -197,6 +208,7 @@ function EnquiriesSection({ lead, onLeadUpdated }) {
             size="sm"
             onClick={() => {
               setEditing(null);
+              setPrefill(null);
               setDialogOpen(true);
             }}
           >
@@ -239,6 +251,7 @@ function EnquiriesSection({ lead, onLeadUpdated }) {
         onOpenChange={setDialogOpen}
         lead={lead}
         enquiry={editing}
+        prefill={prefill}
         config={config}
         onLeadUpdated={onLeadUpdated}
         onSaved={() => load()}

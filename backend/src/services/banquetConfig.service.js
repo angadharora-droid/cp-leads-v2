@@ -33,7 +33,25 @@ export async function getSettings() {
 
 export async function updateSettings(body, actor, req) {
   const settings = await getSettings();
-  if (body.slotRule) settings.slotRule = body.slotRule;
+  const changed = [];
+  if (body.slotRule) {
+    settings.slotRule = body.slotRule;
+    changed.push(`slot rule ${body.slotRule}`);
+  }
+  if (body.stageTatDays) {
+    for (const [stage, days] of Object.entries(body.stageTatDays)) {
+      if (days !== undefined) settings.stageTatDays[stage] = days;
+    }
+    changed.push('stage TAT');
+  }
+  if (body.demandDates) {
+    settings.demandDates = body.demandDates;
+    changed.push('demand dates');
+  }
+  if (body.paymentSchedule) {
+    settings.paymentSchedule = body.paymentSchedule;
+    changed.push('payment schedule');
+  }
   settings.updatedBy = actor?.id;
   await settings.save();
   await writeAudit({
@@ -42,7 +60,7 @@ export async function updateSettings(body, actor, req) {
     action: 'banquet.settings.update',
     entityType: 'BanquetSettings',
     entityId: settings._id,
-    summary: `Slot rule set to ${settings.slotRule}`,
+    summary: `Banquet settings updated: ${changed.join(', ') || 'no change'}`,
   });
   return settings;
 }
@@ -262,7 +280,13 @@ export async function updateSession(id, body, actor, req) {
     const dup = await BanquetSession.findOne({ name: body.name, _id: { $ne: session._id } });
     if (dup) throw new AppError('A session with this name already exists', 409, 'DUPLICATE');
   }
-  Object.assign(session, body);
+  const { targets, ...rest } = body;
+  Object.assign(session, rest);
+  if (targets) {
+    for (const [level, amount] of Object.entries(targets)) {
+      if (amount !== undefined) session.targets[level] = amount;
+    }
+  }
   await session.save();
   await writeAudit({
     req,

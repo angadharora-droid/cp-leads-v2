@@ -55,6 +55,7 @@ export function fnMenuSummary(fn) {
   const parts = [];
   if (fn?.menuType?.name) parts.push(fn.menuType.name);
   for (const item of fn?.addOns || []) if (item?.name) parts.push(item.name);
+  for (const item of fn?.specialItems || []) if (item?.name) parts.push(`${item.name} (special)`);
   for (const item of fn?.liquor || []) if (item?.name) parts.push(item.name);
   for (const item of fn?.requirements || []) if (item?.name) parts.push(item.name);
   if (fn?.additionalRequirement) parts.push(fn.additionalRequirement);

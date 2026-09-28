@@ -22,6 +22,8 @@ import PageHeader from '@/components/PageHeader';
 import EmptyState from '@/components/EmptyState';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CatalogSection from '@/components/banquet/CatalogSection';
+import PipelineRules from '@/components/banquet/PipelineRules';
+import DemandTargets from '@/components/banquet/DemandTargets';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -321,7 +323,7 @@ export default function BanquetSetupPage() {
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <PageHeader
           title="Banquet setup"
-          description="Venues, sessions and the slot rule used by enquiries and the banquet calendar."
+          description="Venues, sessions, the slot rule, stage TAT and the payment schedule used by enquiries and the banquet calendar."
         />
         <Card>
           <CardHeader>
@@ -404,6 +406,9 @@ export default function BanquetSetupPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Stage TAT and the standard payment schedule */}
+      <PipelineRules settings={config.settings} onSaved={load} />
 
       {/* Venues */}
       <Card>
@@ -890,6 +895,9 @@ export default function BanquetSetupPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Revenue each session should bring in, by demand level */}
+      <DemandTargets settings={config.settings} sessions={sessions} onSaved={load} />
 
       {/* The four dropdowns on the banquet function form. Rates set here
           drive the automatic rack-rate calculation on an enquiry. */}

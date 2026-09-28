@@ -13,6 +13,8 @@ import { decryptSecret } from '../utils/mailCrypto.js';
 import { uploadBufferToGridFS, getKitFilesBucket } from '../utils/gridfs.js';
 import { sendMail, isEmailConfigured } from './email.service.js';
 import { getSettings } from './banquetConfig.service.js';
+import { cleanSpecialItems, specialAsItems } from '../utils/specialItems.js';
+import { ensureSchedule, applyAdvance, afterWon, syncBookingLedger, paymentSummary } from './payment.service.js';
 // Proposal, contract and their signed copies print in the house sheet style;
 // the pro-forma, addendum and credit form keep the Word-template layouts.
 import { buildEnquiryProposalPdf, buildContractPdf, buildSignedDocumentPdf, sessionTimingLines } from './proposalPdf.service.js';
@@ -152,7 +154,7 @@ function inrPlain(n) {
 }
 
 export function agreedFunction(fn) {
-  const menuItems = [fn.menuType, ...(fn.addOns || [])].filter((item) => item?.name);
+  const menuItems = [fn.menuType, ...(fn.addOns || []), ...specialAsItems(fn)].filter((item) => item?.name);
   const extras = [...(fn.liquor || []), ...(fn.requirements || [])].map((item) => item?.name).filter(Boolean);
   const hallCharges = functionHallCharges(fn);
   return {
@@ -256,7 +258,7 @@ async function loadLeadScoped(leadId, actor) {
   return lead;
 }
 
-async function loadEnquiryScoped(enquiryId, actor) {
+export async function loadEnquiryScoped(enquiryId, actor) {
   if (!isValidId(enquiryId)) throw new AppError('Enquiry not found', 404, 'NOT_FOUND');
   const enquiry = await Enquiry.findById(enquiryId).populate(FN_POPULATE);
   if (!enquiry) throw new AppError('Enquiry not found', 404, 'NOT_FOUND');
@@ -642,6 +644,17 @@ async function priceFunctions(functions) {
     let flat = 0;
     let offeredPerPax = 0;
     let offeredFlat = 0;
+    // Special menu items have no rack rate: they count at their own rate in both.
+    const specialItems = cleanSpecialItems(fn.specialItems);
+    for (const item of specialItems) {
+      if (item.pricing === 'flat') {
+        flat += item.rate;
+        offeredFlat += item.rate;
+      } else {
+        perPax += item.rate;
+        offeredPerPax += item.rate;
+      }
+    }
     for (const item of picked) {
       const rack = item.rate || 0;
       const rate = offered.has(String(item._id)) ? offered.get(String(item._id)) : rack;
@@ -678,6 +691,7 @@ async function priceFunctions(functions) {
       name: type?.name || fn.name || '',
       pax,
       lineRates,
+      specialItems,
       hallChargeVenues,
       perPaxRate: Math.round(offeredPerPax),
       rackRate,
@@ -804,7 +818,7 @@ export async function listBoard(query, actor) {
   const enquiries = await Enquiry.find(filter)
     .sort({ updatedAt: -1 })
     .limit(500)
-    .populate('lead', 'businessName reference assignedTo leadType departments')
+    .populate('lead', 'businessName reference assignedTo leadType departments contactedFor')
     .populate(FN_POPULATE);
   return { enquiries };
 }
@@ -818,7 +832,7 @@ export async function getEnquiry(enquiryId, actor) {
     select: 'businessName reference contactPerson email mobile leadType departments assignedTo',
     populate: { path: 'assignedTo', select: 'name email' },
   });
-  return { ...withDocumentVersions(enquiry), ...activity, activityNotes: notes };
+  return { ...withDocumentVersions(enquiry), ...activity, activityNotes: notes, paymentSummary: paymentSummary(enquiry) };
 }
 
 // Once won or lost, only the contact and notes can still change — the dates,
@@ -896,7 +910,9 @@ function printSnapshot(enquiry) {
       session: ref(fn.session),
       hallChargeVenues: refs(fn.hallChargeVenues),
       menuType: ref(fn.menuType),
-      addOns: refs(fn.addOns),
+      // Special menu items print alongside the add-on menus.
+      addOns: [...refs(fn.addOns), ...specialAsItems(fn)],
+      specialItems: (fn.specialItems || []).map((item) => ({ name: item.name, rate: item.rate, pricing: item.pricing })),
       liquor: refs(fn.liquor),
       requirements: refs(fn.requirements),
       lineRates: (fn.lineRates || []).map((l) => ({ item: l.item?._id || l.item, rate: l.rate })),
@@ -1199,6 +1215,8 @@ export async function updateEnquiry(enquiryId, body, actor, req) {
   }
   await enquiry.save();
   if (freedSlots) await releaseWaitlist(freedSlots, enquiry._id);
+  // A confirmed booking re-valued by an edit re-values its ledger line.
+  if (enquiry.stage === 'won') await syncBookingLedger(enquiry, lead, actor);
   await enquiry.populate(FN_POPULATE);
   // Anything printed that changed reissues the document the client holds
   // and is recorded for the life cycle.
@@ -1632,6 +1650,8 @@ export async function emailContract(enquiryId, payload, actor, req) {
   setStage(enquiry, 'proposal', 'Proposal generated', actor);
   setStage(enquiry, 'provisional', `Contract ${enquiry.contract.number} emailed to ${to}`, actor);
   enquiry.waitlist.freedAt = null;
+  // The booking is confirmed provisionally: the standard payment schedule starts here.
+  await ensureSchedule(enquiry, actor);
   await enquiry.save();
 
   pushLeadHistory(
@@ -2136,7 +2156,10 @@ export async function markWon(enquiryId, payload, actor, req) {
       ? `Advance received${enquiry.advance.amount ? ` (${enquiry.advance.amount})` : ''}${enquiry.advance.reference ? ` — ${enquiry.advance.reference}` : ''}`
       : 'PPS — confirmed on one-time credit';
   setStage(enquiry, 'won', trigger, actor);
+  await ensureSchedule(enquiry, actor);
+  const advanceMilestone = basis === 'advance' ? applyAdvance(enquiry, actor) : null;
   await enquiry.save();
+  await afterWon(enquiry, lead, actor, advanceMilestone);
 
   pushLeadHistory(
     lead,
@@ -2242,6 +2265,8 @@ export async function markCancelled(enquiryId, payload, actor, req) {
   await enquiry.save();
   // Its slots are free now — the next in line takes them.
   await releaseWaitlist(enquiry.functions, enquiry._id);
+  // A cancelled confirmed booking comes off the company's ledger.
+  if (fromStage === 'won') await syncBookingLedger(enquiry, lead, actor);
 
   const advanceLine = enquiry.cancellation.advanceOutcome
     ? `; advance ${enquiry.cancellation.advanceOutcome}${enquiry.cancellation.advanceAmount ? ` (${enquiry.cancellation.advanceAmount})` : ''}`

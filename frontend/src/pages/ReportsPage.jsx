@@ -702,7 +702,7 @@ export default function ReportsPage() {
                   </Button>
                 ) : (
                   <Button asChild variant="outline" size="sm">
-                    <Link to="/leads/new">Create lead</Link>
+                    <Link to="/prospects/new">Create lead</Link>
                   </Button>
                 )
               }
