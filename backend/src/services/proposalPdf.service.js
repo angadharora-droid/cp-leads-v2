@@ -88,11 +88,6 @@ function rackMenuRate(fn) {
   return pax ? Math.round((Number(fn.rackRate) || 0) / pax) : 0;
 }
 
-/** "Rack Rs. 300" under an offered rate, only when the offer differs from the rack. */
-function rackNote(rack, offered) {
-  return rack && rack !== offered ? `Rack ${money(rack)}` : '';
-}
-
 // Helvetica advance widths (per 1000 em) for the characters an amount uses.
 const HELVETICA_WIDTHS = { R: 722, s: 500, '.': 278, ',': 278, ' ': 278 };
 function helveticaWidth(text, fontSize) {
@@ -122,6 +117,54 @@ function struckAmount(text, { width, fontSize = 9, color = SHEET.muted, margin =
 }
 
 const RACK_NOTE = "Rack rate is the hotel's published rate; the rate shown above it is the rate offered to you.";
+
+// The rack rate struck through beside an offer: smaller and grey, a little
+// gap before the offered rate.
+const RACK_SIZE = 7.2;
+const PAIR_GAP = 4;
+
+/** Whether an offer is below the rack rate, so the rack prints struck through beside it. */
+function discounted(rate, rack) {
+  return rack > 0 && rate > 0 && rate < rack;
+}
+
+/**
+ * An offered rate, right-aligned in a column `width` wide. When the offer is
+ * below the rack rate, the rack rate prints struck through beside it — to its
+ * left on the same line when the pair fits the column, else on the small line
+ * under it (`underMargin`), so the row keeps its rhythm.
+ * Returns { line, under }: the rate line, and the small line (or null).
+ */
+function offeredRate(rate, rack, { width, underMargin = [0, 1.5, 0, 0] }) {
+  const offer = money(rate);
+  const plain = { text: offer, fontSize: BODY_SIZE, color: SHEET.ink, alignment: 'right' };
+  if (!discounted(rate, rack)) return { line: plain, under: null };
+  const struck = money(rack);
+  const offerWidth = helveticaWidth(offer, BODY_SIZE) + 0.5;
+  const lead = width - offerWidth - PAIR_GAP;
+  if (helveticaWidth(struck, RACK_SIZE) <= lead) {
+    // Baselines level: the smaller figures start lower by the difference in ascent.
+    const drop = (BODY_SIZE - RACK_SIZE) * 0.718;
+    return {
+      line: {
+        columns: [
+          { width: lead, ...struckAmount(struck, { width: lead, fontSize: RACK_SIZE, margin: [0, drop, 0, 0] }) },
+          { width: offerWidth, ...plain },
+        ],
+        columnGap: PAIR_GAP,
+      },
+      under: null,
+    };
+  }
+  return { line: plain, under: struckAmount(struck, { width, fontSize: RACK_SIZE, margin: underMargin }) };
+}
+
+/** A rate cell: the offered rate, with the rack rate struck through beside it when the offer is lower. */
+function rateCell(rate, rack, width) {
+  if (!rate) return cell('', { alignment: 'right' });
+  const { line, under } = offeredRate(rate, rack, { width });
+  return { stack: [line, ...(under ? [under] : [])] };
+}
 
 /* ------------------------------- Table pieces ------------------------------ */
 
@@ -350,7 +393,13 @@ function roomBlock(enquiry) {
 
 function eventMealTable(enquiry, { showRack = false } = {}) {
   const headers = ['Date', 'Event Type', 'Venue', 'Minimum Guaranteed', 'Type of Menu', 'Rate', 'Estimated Revenue'];
-  const rows = sortedFunctions(enquiry).map((fn) => {
+  const functions = sortedFunctions(enquiry);
+  // The Rate column widens (from the date and menu columns) only when a rack
+  // rate prints struck through beside an offer.
+  const struck = showRack && functions.some((fn) => discounted(menuRate(fn), rackMenuRate(fn)));
+  const rateWidth = struck ? 74 : 46;
+  const widths = [struck ? 64 : 78, 52, 66, 54, '*', rateWidth, 58];
+  const rows = functions.map((fn) => {
     const times = fnSessionDocs(fn).map(sessionTimes).filter(Boolean).join(', ');
     const [primary, ...addOns] = fnVenueDocs(fn).map((v) => v?.name).filter(Boolean);
     const rate = menuRate(fn);
@@ -361,14 +410,14 @@ function eventMealTable(enquiry, { showRack = false } = {}) {
       cell(primary, { sub: addOns.length ? `Add-on rooms: ${addOns.join(', ')}` : '' }),
       cell(fn.pax ? String(fn.pax) : '', { alignment: 'right' }),
       cell(menuLabel(fn)),
-      cell(rate ? money(rate) : '', { alignment: 'right', sub: showRack ? rackNote(rackMenuRate(fn), rate) : '' }),
+      rateCell(rate, showRack ? rackMenuRate(fn) : 0, rateWidth),
       cell(revenue ? money(revenue) : '', { alignment: 'right', bold: true }),
     ];
   });
   if (!rows.length) rows.push(headers.map(() => cell('')));
   return [
     sectionTitle('Event and Meal Details', { margin: [0, 14, 0, 6] }),
-    dataTable([78, 52, 66, 54, '*', 46, 58], [headers.map((h, i) => head(h, [3, 5, 6].includes(i) ? 'right' : 'left')), ...rows]),
+    dataTable(widths, [headers.map((h, i) => head(h, [3, 5, 6].includes(i) ? 'right' : 'left')), ...rows]),
   ];
 }
 
@@ -390,8 +439,8 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
       return {
         name: item.name,
         details: flat ? when : `${when} · ${pax} pax`,
-        rate: rate ? money(rate) : '',
-        rack: showRack ? rackNote(Number(item.rate) || 0, rate) : '',
+        rate,
+        rack: showRack ? Number(item.rate) || 0 : 0,
         revenue: rate ? money((flat ? 1 : pax) * rate) : '',
       };
     };
@@ -399,11 +448,13 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
     for (const item of fn.requirements || []) if (item?.name) extras.push(describe(item));
     for (const v of fn.hallChargeVenues || []) {
       if (v?.name && Number(v.hallCharge) > 0) {
-        extras.push({ name: `Hall Charges — ${v.name}`, details: when, rate: money(v.hallCharge), rack: '', revenue: money(v.hallCharge) });
+        extras.push({ name: `Hall Charges — ${v.name}`, details: when, rate: Number(v.hallCharge), rack: 0, revenue: money(v.hallCharge) });
       }
     }
-    if (fn.additionalRequirement) extras.push({ name: fn.additionalRequirement, details: when, rate: '', rack: '', revenue: '' });
+    if (fn.additionalRequirement) extras.push({ name: fn.additionalRequirement, details: when, rate: 0, rack: 0, revenue: '' });
   }
+  // The Rate column widens only when a rack rate prints struck through beside an offer.
+  const rateWidth = [...liquor, ...extras].some((i) => discounted(i.rate, i.rack)) ? 88 : 64;
 
   // Several items share one fixed row; every column repeats the same
   // two-line rhythm (value, then a small line) so the amounts stay level
@@ -417,18 +468,27 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
       ],
     })),
   });
+  // The rates of a fixed row, in the same rhythm; a rack rate that does not
+  // fit beside its offer takes the small line.
+  const rateColumn = (items) => ({
+    stack: items.map((i) => {
+      if (!i.rate) return itemColumn([i], () => '', 'right');
+      const { line, under } = offeredRate(i.rate, i.rack, { width: rateWidth, underMargin: [0, 1, 0, 3] });
+      return { stack: [line, under || { ...subLine(''), alignment: 'right' }] };
+    }),
+  });
   const fixedRow = (title, items) => [
     cell(title, { bold: true }),
     items.length
       ? itemColumn(items, (i) => i.name, 'left', (i) => i.details)
       : { text: 'Kindly Advise', fontSize: BODY_SIZE, color: SHEET.muted, italics: true },
-    items.length ? itemColumn(items, (i) => i.rate, 'right', (i) => i.rack) : cell('', { alignment: 'right' }),
+    items.length ? rateColumn(items) : cell('', { alignment: 'right' }),
     items.length ? itemColumn(items, (i) => i.revenue, 'right') : cell('', { alignment: 'right' }),
   ];
   const lineRow = (item) => [
     cell(item.name, { bold: true }),
     cell(item.details),
-    cell(item.rate, { alignment: 'right', sub: item.rack }),
+    rateCell(item.rate, item.rack, rateWidth),
     cell(item.revenue, { alignment: 'right' }),
   ];
 
@@ -460,7 +520,7 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
   return [
     sectionTitle('Other Requirements', { margin: [0, 14, 0, 6] }),
     dataTable(
-      ['*', '*', 64, 80],
+      ['*', '*', rateWidth, 80],
       [
         ['Particulars', 'Requirement Details', 'Rate', 'Estimated Revenue'].map((h, i) => head(h, i >= 2 ? 'right' : 'left')),
         fixedRow('Alcoholic Beverages', liquor),
@@ -808,8 +868,9 @@ function acceptanceCard(signature) {
 /* ------------------------------- Document ---------------------------------- */
 
 async function documentContent(enquiry, lead, { kind, preparedBy, clientSignature, sessionTimings }) {
-  // Both documents show the rack rate beside each offered rate, so the client
-  // sees the published rate and the rate they were given.
+  // Both documents print the rack rate struck through beside each offered
+  // rate below it, so the client sees the published rate and the rate they
+  // were given.
   const showRack = kind === 'proposal' || kind === 'contract';
   const content = [
     factsStrip(enquiry, kind),

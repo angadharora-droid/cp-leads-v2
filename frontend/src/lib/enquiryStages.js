@@ -142,3 +142,38 @@ export function editLabelFor(enquiry) {
   if (enquiry?.proposal?.number) return 'Edit proposal';
   return 'Edit enquiry';
 }
+
+/* ------------------------------ Turnaround time ----------------------------- */
+
+/** Days an enquiry may sit in each open stage before it is over TAT (Banquet Setup can change them). */
+export const DEFAULT_STAGE_TAT_DAYS = { enquiry: 3, proposal: 7, waitlist: 14, provisional: 7 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When the enquiry entered the stage it is in now (the start of its latest run in that stage). */
+export function stageEnteredAt(enquiry) {
+  if (!enquiry) return null;
+  if (enquiry.stage === 'waitlist' && enquiry.waitlist?.since) return new Date(enquiry.waitlist.since);
+  const history = [...(enquiry.stageHistory || [])].sort((a, b) => new Date(a.at) - new Date(b.at));
+  let entered = null;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i].stage !== enquiry.stage) break;
+    entered = history[i].at;
+  }
+  const date = new Date(entered || enquiry.createdAt);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Where an open enquiry stands against its stage's TAT. Returns null for
+ * closed stages (won / lost / cancelled) and stages without a limit.
+ * @returns {{ days: number, limit: number, over: boolean, overBy: number } | null}
+ */
+export function tatStatus(enquiry, tatDays = DEFAULT_STAGE_TAT_DAYS, now = new Date()) {
+  if (!enquiry || CLOSED_STAGE_KEYS.includes(enquiry.stage)) return null;
+  const limit = Number((tatDays || DEFAULT_STAGE_TAT_DAYS)[enquiry.stage] ?? DEFAULT_STAGE_TAT_DAYS[enquiry.stage]);
+  const entered = stageEnteredAt(enquiry);
+  if (!Number.isFinite(limit) || !entered) return null;
+  const days = Math.max(0, Math.floor((now - entered) / DAY_MS));
+  return { days, limit, over: days > limit, overBy: Math.max(0, days - limit) };
+}

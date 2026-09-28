@@ -128,6 +128,22 @@ const functionSchema = new Schema(
       default: [],
     },
 
+    // Dishes added to the menu that are not in Banquet Setup, each with its
+    // own rate (per guest or flat); priced as offered.
+    specialItems: {
+      type: [
+        new Schema(
+          {
+            name: { type: String, required: true, trim: true },
+            rate: { type: Number, default: 0, min: 0 },
+            pricing: { type: String, enum: ['per_pax', 'flat'], default: 'per_pax' },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+
     // Per-guest rate as offered, rack from the catalog, and the offer.
     perPaxRate: { type: Number, default: 0 },
     rackRate: { type: Number, default: 0 },
@@ -401,7 +417,59 @@ const wonSchema = new Schema(
   { _id: false }
 );
 
-export const EMAIL_KINDS = ['proposal', 'contract', 'proforma', 'addendum', 'signed'];
+export const EMAIL_KINDS = ['proposal', 'contract', 'proforma', 'addendum', 'signed', 'payment_request'];
+
+export const MILESTONE_STATUSES = ['pending', 'received'];
+
+/**
+ * One payment the client owes: a share of the booking value, due on a date.
+ * Built from the standard schedule in Banquet Setup when the contract goes
+ * out (or on demand), then editable per booking.
+ */
+const milestoneSchema = new Schema(
+  {
+    label: { type: String, required: true, trim: true },
+    percent: { type: Number, default: 0 },
+    amount: { type: Number, required: true, min: 0 },
+    dueDate: { type: Date },
+    // How the due date was worked out, so it can follow the event date.
+    due: { type: String, enum: ['on_confirmation', 'days_before_event', 'days_after_event', 'fixed'], default: 'fixed' },
+    days: { type: Number, default: 0 },
+    status: { type: String, enum: MILESTONE_STATUSES, default: 'pending' },
+    received: {
+      amount: { type: Number },
+      date: { type: Date },
+      mode: { type: String, enum: [...ADVANCE_MODES, ''], default: '' },
+      reference: { type: String, default: '' },
+      by: { type: Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String },
+      at: { type: Date },
+    },
+    // Payment requests emailed to the client for this milestone.
+    requests: [
+      {
+        at: { type: Date },
+        to: { type: String, default: '' },
+        auto: { type: Boolean, default: false },
+        byName: { type: String, default: '' },
+        _id: false,
+      },
+    ],
+  },
+  { _id: true }
+);
+
+const paymentsSchema = new Schema(
+  {
+    milestones: { type: [milestoneSchema], default: [] },
+    // Email the client a payment request automatically when a milestone
+    // falls due (and a reminder every few days while it stays unpaid).
+    autoRequest: { type: Boolean, default: false },
+    setAt: { type: Date },
+    setByName: { type: String },
+  },
+  { _id: false }
+);
 
 /** Every client email sent for this enquiry, newest last. */
 const emailLogSchema = new Schema(
@@ -468,6 +536,7 @@ const enquirySchema = new Schema(
     cancellation: { type: cancellationSchema, default: () => ({}) },
     credit: { type: creditSchema, default: () => ({}) },
     won: { type: wonSchema, default: () => ({}) },
+    payments: { type: paymentsSchema, default: () => ({}) },
     waitlist: { type: waitlistSchema, default: () => ({}) },
     emails: { type: [emailLogSchema], default: [] },
 

@@ -7,6 +7,7 @@ import * as activityController from '../controllers/leadActivity.controller.js';
 import { noteSchema, actionPointSchema, followUpSchema, closeFollowUpSchema, instructionSchema, visitReportSchema } from '../validation/lead.validation.js';
 
 import * as enquiryController from '../controllers/enquiry.controller.js';
+import { enquiryPaymentRouter } from './payment.routes.js';
 
 import {
   updateEnquirySchema,
@@ -99,6 +100,9 @@ router.post('/:enquiryId/lost', validate(lostSchema), enquiryController.markLost
 
 // Cancel a provisional or confirmed booking (reason required; advance outcome recorded).
 router.post('/:enquiryId/cancel', validate(cancelSchema), enquiryController.markCancelled);
+
+// Payment milestones: schedule, receipts, payment requests to the client.
+router.use('/:enquiryId/payments', enquiryPaymentRouter);
 
 // Clears the "slot now free" notice once the team has seen it.
 router.post('/:enquiryId/waitlist/dismiss', enquiryController.dismissWaitlist);

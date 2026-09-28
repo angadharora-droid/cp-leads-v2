@@ -215,10 +215,15 @@ function ViewPill({ icon: Icon, label, count, active, onClick, alert }) {
 
 /** One follow-up row — the whole row links to its lead. */
 function FollowUpRow({ item, bucket }) {
+  const to = item.prospectId
+    ? `/prospects/${item.prospectId}`
+    : item.enquiryId
+      ? `/enquiries/${item.enquiryId}`
+      : `/leads/${item.leadId}`;
   return (
     <li>
       <Link
-        to={item.enquiryId ? `/enquiries/${item.enquiryId}` : `/leads/${item.leadId}`}
+        to={to}
         className={cn(
           'group flex min-h-[3.5rem] cursor-pointer items-start gap-3 px-4 py-3 transition-colors duration-150 sm:items-center sm:px-6',
           'focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
@@ -236,7 +241,7 @@ function FollowUpRow({ item, bucket }) {
               {item.businessName || 'Untitled lead'}
             </span>
             <span className="text-xs text-muted-foreground">
-              {item.reference}{item.enquiryId ? ` ? Enquiry ${item.enquiryId.slice(-6)}` : ' ? Unlinked lead activity'}
+              {item.reference}{item.prospectId ? '' : item.enquiryId ? ` · Enquiry ${item.enquiryId.slice(-6)}` : ' · Unlinked lead activity'}
               {item.city ? ` · ${item.city}` : ''}
             </span>
           </div>
@@ -301,7 +306,7 @@ function BucketSection({ bucket, items }) {
       <ul className="divide-y">
         {items.map((fu) => (
           <FollowUpRow
-            key={`${fu.leadId}-${fu.followUpId ?? fu.dueDate ?? Math.random()}`}
+            key={`${fu.prospectId || fu.leadId}-${fu.followUpId ?? fu.dueDate ?? Math.random()}`}
             item={fu}
             bucket={bucket}
           />
@@ -332,7 +337,7 @@ function InstructionRow({ item }) {
             <span className="font-medium text-foreground group-hover:text-primary">
               {item.businessName || 'Untitled lead'}
             </span>
-            <span>{item.reference}{item.enquiryId ? ` ? Enquiry ${item.enquiryId.slice(-6)}` : ' ? Unlinked lead activity'}</span>
+            <span>{item.reference}{item.prospectId ? '' : item.enquiryId ? ` · Enquiry ${item.enquiryId.slice(-6)}` : ' · Unlinked lead activity'}</span>
           </div>
         </div>
         <div className="hidden shrink-0 flex-col items-end sm:flex">

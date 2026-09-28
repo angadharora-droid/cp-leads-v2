@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format, startOfMonth } from 'date-fns';
-import { Activity, BadgeIndianRupee, Download, Hourglass, Percent, ShieldCheck, Trophy } from 'lucide-react';
+import { Activity, BadgeIndianRupee, Building2, Download, Gauge, Hourglass, Percent, ShieldCheck, Trophy, UserPlus } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -23,7 +23,9 @@ const ALL = '__all__';
 const AUDIT_ROWS_SHOWN = 200;
 const TABS = [
   { key: 'performance', label: 'Executive performance' },
+  { key: 'scorecard', label: 'Scorecard' },
   { key: 'productivity', label: 'Executive productivity' },
+  { key: 'clients', label: 'Clients' },
   { key: 'ageing', label: 'Pipeline ageing' },
   { key: 'audit', label: 'Audit report' },
 ];
@@ -91,7 +93,7 @@ function PerformanceTable({ rows }) {
             <NumHead>Cancelled</NumHead>
             <NumHead>Conversion</NumHead>
             <NumHead>Avg days to win</NumHead>
-            <NumHead>Advance collected</NumHead>
+            <NumHead>Collected</NumHead>
             <NumHead>Open now</NumHead>
             <NumHead>Open value</NumHead>
           </TableRow>
@@ -110,13 +112,135 @@ function PerformanceTable({ rows }) {
               <Num>{r.cancelled}</Num>
               <Num>{r.conversion}%</Num>
               <Num>{r.won ? r.avgDaysToWin : '—'}</Num>
-              <Num>{rs(r.advanceCollected)}</Num>
+              <Num>{rs(r.collected)}</Num>
               <Num>{r.openEnquiries}</Num>
               <Num>{rs(r.openValue)}</Num>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+function ScorecardTable({ rows }) {
+  if (!rows.length) return <EmptyState size="compact" icon={Gauge} title="Nothing in this period" description="No leads captured, enquiries raised or open pipeline for these dates." />;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Leads captured and linked count the person who did it; the pipeline figures go to the executive the company or individual is assigned to.
+        Over TAT is open enquiries past their stage turnaround (Banquet Setup) right now. First response is the average days from an enquiry
+        being raised to its first proposal, for first proposals made in this period.
+      </p>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Executive</TableHead>
+              <NumHead>Leads captured</NumHead>
+              <NumHead>Leads linked</NumHead>
+              <NumHead>Enquiries raised</NumHead>
+              <NumHead>Proposals sent</NumHead>
+              <NumHead>Won value</NumHead>
+              <NumHead>Conversion</NumHead>
+              <NumHead>Over TAT now</NumHead>
+              <NumHead>First response (days)</NumHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.executiveId}>
+                <TableCell className="font-medium text-foreground">{r.executive}</TableCell>
+                <Num>{r.leadsCaptured}</Num>
+                <Num>{r.leadsLinked}</Num>
+                <Num>{r.enquiries}</Num>
+                <Num>{r.proposalsSent}</Num>
+                <Num className="font-medium text-foreground">{rs(r.wonValue)}</Num>
+                <Num>{r.conversion}%</Num>
+                <Num className={r.overTat ? 'font-medium text-destructive' : undefined}>
+                  {r.overTat}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">of {r.openEnquiries}</span>
+                </Num>
+                <Num>
+                  {r.responded ? (
+                    <span title={`Over ${r.responded} first proposal${r.responded === 1 ? '' : 's'}`}>{r.avgFirstResponseDays}</span>
+                  ) : (
+                    '—'
+                  )}
+                </Num>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function ClientsTable({ rows }) {
+  if (!rows.length) {
+    return (
+      <EmptyState
+        size="compact"
+        icon={Building2}
+        title="No client activity in this period"
+        description="No company or individual had an enquiry raised, a proposal sent, a booking closed or money collected inside these dates."
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        One row per company or individual with activity in the period. Collected is money received in the period: the payment schedule's
+        received payments, or the advance recorded when the booking was won. Open pipeline is the position right now.
+      </p>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Client</TableHead>
+              <TableHead>Executive</TableHead>
+              <NumHead>Enquiries</NumHead>
+              <NumHead>Proposals sent</NumHead>
+              <NumHead>Won</NumHead>
+              <NumHead>Lost</NumHead>
+              <NumHead>Cancelled</NumHead>
+              <NumHead>Conversion</NumHead>
+              <NumHead>Won value</NumHead>
+              <NumHead>Open pipeline</NumHead>
+              <NumHead>Collected</NumHead>
+              <NumHead>Avg days to win</NumHead>
+              <TableHead>Last enquiry</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.leadId}>
+                <TableCell className="min-w-[12rem]">
+                  <Link to={`/leads/${r.leadId}`} className="font-medium text-foreground hover:underline">
+                    {r.client}
+                  </Link>
+                  <span className="block text-xs text-muted-foreground">
+                    {[r.reference, r.leadTypeLabel, r.repeat ? `Repeat · ${r.totalEnquiries} enquiries` : ''].filter(Boolean).join(' · ')}
+                  </span>
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{r.executive}</TableCell>
+                <Num>{r.enquiries}</Num>
+                <Num>{r.proposalsSent}</Num>
+                <Num className="font-medium text-foreground">{r.won}</Num>
+                <Num>{r.lost}</Num>
+                <Num>{r.cancelled}</Num>
+                <Num>{r.conversion}%</Num>
+                <Num className="font-medium text-foreground">{rs(r.wonValue)}</Num>
+                <Num>{rs(r.openValue)}</Num>
+                <Num>{rs(r.collected)}</Num>
+                <Num>{r.won ? r.avgDaysToWin : '—'}</Num>
+                <TableCell className="whitespace-nowrap">{r.lastEnquiryAt ? formatDate(r.lastEnquiryAt) : '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -173,7 +297,7 @@ function AgeingTables({ ageing }) {
           <TableHeader>
             <TableRow>
               <TableHead>Stage</TableHead>
-              <NumHead>Limit (days)</NumHead>
+              <NumHead>TAT (days)</NumHead>
               <NumHead>Enquiries</NumHead>
               <NumHead>Stuck</NumHead>
               <NumHead>Avg days</NumHead>
@@ -229,7 +353,7 @@ function AgeingTables({ ageing }) {
                   <TableCell className="whitespace-nowrap">{formatDate(r.enteredAt)}</TableCell>
                   <Num className={r.overdue ? 'font-medium text-destructive' : undefined}>
                     {r.days}
-                    {r.overdue ? <span className="ml-1 text-xs font-normal">(limit {r.limit})</span> : null}
+                    {r.overdue ? <span className="ml-1 text-xs font-normal">(TAT {r.limit})</span> : null}
                   </Num>
                   <Num>{rs(r.value)}</Num>
                   <TableCell className="whitespace-nowrap">{r.firstDate ? formatDate(r.firstDate) : '—'}</TableCell>
@@ -335,9 +459,10 @@ function AuditTables({ audit }) {
 /* ---------------------------------- Page ----------------------------------- */
 
 /**
- * Management reports — executive performance and productivity, pipeline
- * ageing and the audit report — for admins and managers. One period and
- * executive filter drives every tab and the Excel export.
+ * Management reports — executive performance, the salesperson scorecard,
+ * executive and client productivity, pipeline ageing and the audit report —
+ * for admins and managers. One period and executive filter drives every tab
+ * and the Excel export.
  */
 export default function TeamReports() {
   const [filters, setFilters] = useState(defaultFilters);
@@ -371,7 +496,14 @@ export default function TeamReports() {
   const counts = useMemo(
     () =>
       data
-        ? { performance: data.performance.length, productivity: data.productivity.length, ageing: data.ageing.rows.length, audit: data.audit.total }
+        ? {
+            performance: data.performance.length,
+            scorecard: (data.scorecard || []).length,
+            productivity: data.productivity.length,
+            clients: (data.clients || []).length,
+            ageing: data.ageing.rows.length,
+            audit: data.audit.total,
+          }
         : {},
     [data]
   );
@@ -441,7 +573,7 @@ export default function TeamReports() {
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
             The period applies to when things happened: leads added, enquiries raised, documents sent, bookings won and actions logged.
-            Pipeline ageing and the overdue counts show the position right now.
+            Pipeline ageing, open pipeline, over-TAT and the overdue counts show the position right now.
           </p>
         </CardContent>
       </Card>
@@ -452,13 +584,15 @@ export default function TeamReports() {
         </Card>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile icon={Trophy} label="Won" value={isLoading ? '…' : s.won ?? 0} hint={isLoading ? '' : rs(s.wonValue)} tone="success" />
         <StatTile icon={Percent} label="Conversion" value={isLoading ? '…' : `${s.conversion ?? 0}%`} hint="won of those that closed" tone="info" />
         <StatTile icon={Activity} label="Enquiries raised" value={isLoading ? '…' : s.enquiries ?? 0} hint={isLoading ? '' : `${s.lost ?? 0} lost · ${s.cancelled ?? 0} cancelled`} />
-        <StatTile icon={BadgeIndianRupee} label="Advance collected" value={isLoading ? '…' : rs(s.advanceCollected)} tone="success" />
+        <StatTile icon={BadgeIndianRupee} label="Collected" value={isLoading ? '…' : rs(s.collected)} hint="payments received in the period" tone="success" />
         <StatTile icon={Hourglass} label="Stuck in pipeline" value={isLoading ? '…' : s.stuck ?? 0} hint={isLoading ? '' : `of ${s.openEnquiries ?? 0} open now`} tone={s.stuck ? 'destructive' : 'primary'} />
         <StatTile icon={ShieldCheck} label="Actions logged" value={isLoading ? '…' : (s.auditActions ?? 0).toLocaleString('en-IN')} hint={isLoading ? '' : `${s.activeUsers ?? 0} people active`} tone="warning" />
+        <StatTile icon={Building2} label="Active clients" value={isLoading ? '…' : s.activeClients ?? 0} hint={isLoading ? '' : `${s.repeatClients ?? 0} repeat (2+ enquiries)`} tone="info" />
+        <StatTile icon={UserPlus} label="Leads captured" value={isLoading ? '…' : s.leadsCaptured ?? 0} hint={isLoading ? '' : `${s.leadsLinked ?? 0} linked to a company or individual`} />
       </div>
 
       <Card>
@@ -486,8 +620,12 @@ export default function TeamReports() {
             </div>
           ) : tab === 'performance' ? (
             <PerformanceTable rows={data.performance} />
+          ) : tab === 'scorecard' ? (
+            <ScorecardTable rows={data.scorecard || []} />
           ) : tab === 'productivity' ? (
             <ProductivityTable rows={data.productivity} />
+          ) : tab === 'clients' ? (
+            <ClientsTable rows={data.clients || []} />
           ) : tab === 'ageing' ? (
             <AgeingTables ageing={data.ageing} />
           ) : (

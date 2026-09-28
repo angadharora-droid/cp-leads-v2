@@ -25,7 +25,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 
 const PAGES = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard, keywords: 'home overview' },
-  { label: 'Leads', to: '/leads', icon: FolderKanban, keywords: 'companies individuals list' },
+  { label: 'Leads', to: '/prospects', icon: FolderKanban, keywords: 'new people unlinked' },
+  { label: 'Companies & Individuals', to: '/leads', icon: FolderKanban, keywords: 'companies individuals list accounts' },
   { label: 'Enquiries', to: '/enquiries', icon: KanbanSquare, keywords: 'banquet pipeline board' },
   { label: 'Rate Contracts', to: '/rate-contracts', icon: FileSignature, keywords: 'arc corporate agreement' },
   { label: 'Banquet Calendar', to: '/banquet-calendar', icon: CalendarDays, keywords: 'availability venues' },
@@ -34,7 +35,7 @@ const PAGES = [
 ];
 
 const ACTIONS = [
-  { label: 'New lead', to: '/leads/new', icon: Plus, keywords: 'create company individual' },
+  { label: 'New lead', to: '/prospects/new', icon: Plus, keywords: 'create person company individual' },
 ];
 
 /**

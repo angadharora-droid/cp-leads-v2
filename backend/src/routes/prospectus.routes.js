@@ -4,6 +4,9 @@ import authenticate from '../middleware/auth.js';
 import { requireRole, requireModule } from '../middleware/rbac.js';
 import validate from '../middleware/validate.js';
 import * as prospectusController from '../controllers/prospectus.controller.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import { sendOk } from '../utils/apiResponse.js';
+import { checkProspectusMenu } from '../services/menuCheck.service.js';
 import {
   createProspectusSchema,
   updateProspectusSchema,
@@ -35,6 +38,12 @@ router.post('/', validate(createProspectusSchema), prospectusController.create);
 router.get('/:id', validate(prospectusIdParamsSchema, 'params'), prospectusController.getOne);
 router.patch('/:id', validate(prospectusIdParamsSchema, 'params'), validate(updateProspectusSchema), prospectusController.update);
 router.post('/:id/refresh', validate(prospectusIdParamsSchema, 'params'), prospectusController.refresh);
+// AI check of the menu's balance (flavours, colours, cooking methods, main ingredients).
+router.post(
+  '/:id/menu-check',
+  validate(prospectusIdParamsSchema, 'params'),
+  asyncHandler(async (req, res) => sendOk(res, await checkProspectusMenu(req.params.id, req.user, req)))
+);
 router.post('/:id/approve', requireRole('admin', 'manager'), validate(prospectusIdParamsSchema, 'params'), prospectusController.approve);
 router.delete('/:id', validate(prospectusIdParamsSchema, 'params'), requireRole('admin'), prospectusController.remove);
 

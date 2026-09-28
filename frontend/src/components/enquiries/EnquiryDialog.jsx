@@ -17,8 +17,10 @@ import {
 } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { stageInfo } from '@/lib/enquiryStages';
 import { isIndividual } from '@/lib/departments';
+import { DEMAND_LABELS, functionTarget } from '@/lib/demand';
 import DayTimeline from '@/components/banquet/DayTimeline';
 import DepartmentSelect from '@/components/leads/DepartmentSelect';
 import MultiSelect from '@/components/ui/multi-select';
@@ -77,6 +79,8 @@ function emptyFunction() {
     // Offered rate per picked option (item id → rupees as typed); the
     // proposed rate is formed from these.
     lineRates: {},
+    // Menu dishes not in Banquet Setup, each with its own rate.
+    specialItems: [],
     additionalRequirement: '',
   };
 }
@@ -239,6 +243,27 @@ export function priceFunction(fn, catalog, venues = []) {
     };
   });
 
+  // Special menu items: priced as typed, with no rack rate to compare.
+  (fn.specialItems || [])
+    .filter((item) => item.name?.trim())
+    .forEach((item, i) => {
+      const rate = Number(item.rate) || 0;
+      const flat = item.pricing === 'flat';
+      lines.push({
+        id: `special-${i}`,
+        name: item.name.trim(),
+        kind: 'Special item',
+        flat,
+        locked: true,
+        lockedLabel: 'Special',
+        rackRate: rate,
+        rate,
+        edited: false,
+        amount: flat ? rate : rate * pax,
+        rackAmount: flat ? rate : rate * pax,
+      });
+    });
+
   // Hall charges for the held venues that are ticked. The amount is always the
   // Banquet Setup figure, so these lines are shown but never edited.
   const hallLines = tickedHallVenues(fn)
@@ -308,6 +333,70 @@ function lineRatesPayload(fn, catalog) {
  * rate offered for this enquiry editable in place. The total formed from
  * these lines is the rate proposed.
  */
+function SpecialItemsEditor({ index, fn, onChange }) {
+  const items = fn.specialItems || [];
+  const setItems = (next) => onChange(index, 'specialItems', next);
+  const setItem = (i, patch) => setItems(items.map((item, j) => (j === i ? { ...item, ...patch } : item)));
+
+  return (
+    <div className="space-y-2 rounded-lg border border-dashed p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-foreground">Special items</p>
+          <p className="text-xs text-muted-foreground">
+            Dishes added to the menu that are not in Banquet Setup — priced at the rate typed here.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setItems([...items, { name: '', rate: '', pricing: 'per_pax' }])}
+        >
+          <Plus className="h-4 w-4" />
+          Add special item
+        </Button>
+      </div>
+      {items.map((item, i) => (
+        <div key={i} className="grid grid-cols-[1fr_7rem] gap-2 sm:grid-cols-[1fr_7rem_9rem_auto] sm:items-center">
+          <Input
+            aria-label="Special item name"
+            placeholder="e.g. Live jalebi counter"
+            value={item.name}
+            onChange={(e) => setItem(i, { name: e.target.value })}
+          />
+          <Input
+            aria-label={`Rate for ${item.name || 'special item'}`}
+            inputMode="numeric"
+            placeholder="Rate"
+            value={item.rate}
+            onChange={(e) => setItem(i, { rate: e.target.value.split('').filter((c) => c >= '0' && c <= '9').join('') })}
+            className="text-right tabular-nums"
+          />
+          <Select value={item.pricing} onValueChange={(pricing) => setItem(i, { pricing })}>
+            <SelectTrigger aria-label="How it is charged">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="per_pax">Per guest</SelectItem>
+              <SelectItem value="flat">Flat</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove ${item.name || 'special item'}`}
+            onClick={() => setItems(items.filter((_, j) => j !== i))}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FunctionSummary({ index, fn, catalog, venues, onChange }) {
   const { lines, pax, perPax, flat, rack, proposed } = priceFunction(fn, catalog, venues);
   const discount = rack - proposed;
@@ -372,8 +461,11 @@ function FunctionSummary({ index, fn, catalog, venues, onChange }) {
                 </td>
                 <td className="px-3 py-1.5 text-right">
                   {line.locked ? (
-                    <span className="text-xs text-muted-foreground" title="Set in Banquet Setup">
-                      Fixed
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title={line.lockedLabel ? 'Rate typed under Special items' : 'Set in Banquet Setup'}
+                    >
+                      {line.lockedLabel || 'Fixed'}
                     </span>
                   ) : (
                   <div className="flex items-center justify-end gap-1.5">
@@ -521,6 +613,7 @@ function FunctionCard({
   todayStr,
   conflict,
   focused = false,
+  demandDates = [],
   onChange,
   onRemove,
 }) {
@@ -784,8 +877,11 @@ function FunctionCard({
           </div>
         </div>
 
+        <SpecialItemsEditor index={index} fn={fn} onChange={onChange} />
+
         {/* Summary of the selection; the rates offered form the rate proposed. */}
         <FunctionSummary index={index} fn={fn} catalog={catalog} venues={venues} onChange={onChange} />
+        <TargetStrip fn={fn} catalog={catalog} venues={venues} sessions={sessions} demandDates={demandDates} />
 
         <div className="space-y-1.5">
           <Label htmlFor={`fn-${index}-extra`}>Anything else (not priced, printed as written)</Label>
@@ -807,6 +903,39 @@ function FunctionCard({
         todayStr={todayStr}
         onPickDate={(d) => set('date', d)}
       />
+    </div>
+  );
+}
+
+/**
+ * How a function measures up to its sessions' revenue target on that date
+ * (normal / high / peak demand — Banquet Setup). Hidden when no target is set.
+ */
+function TargetStrip({ fn, catalog, venues, sessions, demandDates }) {
+  if (!fn.date || !fn.sessions?.length) return null;
+  const { level, target, sessions: held, period } = functionTarget(fn, sessions, demandDates);
+  if (!target) return null;
+  const value = priceFunction(fn, catalog, venues).proposed;
+  const share = Math.round((value / target) * 100);
+  const met = value >= target;
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm',
+        met ? 'border-success/40 bg-success/10' : 'border-amber-500/40 bg-amber-500/10'
+      )}
+    >
+      <span className="text-foreground">
+        Target for {held.map((s) => s.name).join(' + ')} ·{' '}
+        <span className={level === 'normal' ? 'text-muted-foreground' : 'font-medium'}>
+          {DEMAND_LABELS[level]}
+          {period?.note ? ` (${period.note})` : ''}
+        </span>
+        : <span className="font-semibold tabular-nums">{inr(target)}</span>
+      </span>
+      <span className={cn('font-medium tabular-nums', met ? 'text-success' : 'text-amber-700 dark:text-amber-300')}>
+        This function {inr(value)} · {share}% {met ? '— target met' : `— ${inr(target - value)} short`}
+      </span>
     </div>
   );
 }
@@ -992,10 +1121,12 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
  *   created inline — receives the refreshed lead
  * @param {number|null} [props.focusFunction] index of the function the panel
  *   was opened on (a function card was clicked); it is scrolled into view
+ * @param {object|null} [props.prefill] new enquiry only: department and
+ *   contact to start from (a lead that was just linked)
  * @param {boolean} [props.readOnly] the enquiry is won, lost or cancelled:
  *   everything shows, nothing can be changed or saved
  */
-function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onLeadUpdated, focusFunction = null, readOnly = false, title = '' }) {
+function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onLeadUpdated, focusFunction = null, readOnly = false, title = '', prefill = null }) {
   const isEdit = Boolean(enquiry?._id);
   // What saving does once a document exists, said before the exec edits.
   const saveNote = !isEdit || readOnly
@@ -1077,6 +1208,11 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
               liquor: (fn.liquor || []).map(idOf),
               requirements: (fn.requirements || []).map(idOf),
               lineRates: loadLineRates(fn),
+              specialItems: (fn.specialItems || []).map((item) => ({
+                name: item.name || '',
+                rate: String(item.rate ?? ''),
+                pricing: item.pricing === 'flat' ? 'flat' : 'per_pax',
+              })),
               additionalRequirement: fn.additionalRequirement || '',
             }))
           : [emptyFunction()],
@@ -1090,15 +1226,16 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
     } else {
       const only = (lead?.departments || []).length === 1 ? lead.departments[0] : null;
       setForm({
-        department: only ? String(only._id) : '',
+        department: prefill?.department || (only ? String(only._id) : ''),
         kind: 'banquet',
-        contactName: lead?.contactPerson || '',
-        contactEmail: lead?.email || '',
-        contactPhone: lead?.mobile || '',
+        contactName: prefill?.contactName || lead?.contactPerson || '',
+        contactEmail: prefill?.contactEmail || lead?.email || '',
+        contactPhone: prefill?.contactPhone || lead?.mobile || '',
         notes: '',
-        billingName: lead?.businessName || '',
-        gstNumber: '',
-        panNumber: '',
+        // A registered company bills under its legal name and numbers.
+        billingName: lead?.legalName || lead?.businessName || '',
+        gstNumber: lead?.gstNumber || '',
+        panNumber: lead?.panNumber || '',
         paymentTerms: '30% Now, Balance 60 Days',
         functions: [emptyFunction()],
         room: emptyRoom(),
@@ -1284,6 +1421,9 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
               liquor: fn.liquor,
               requirements: fn.requirements,
               lineRates: lineRatesPayload(fn, catalog),
+              specialItems: (fn.specialItems || [])
+                .filter((item) => item.name.trim())
+                .map((item) => ({ name: item.name.trim(), rate: Number(item.rate) || 0, pricing: item.pricing })),
               // The server adds the hall charges itself from Banquet Setup, so
               // they are left out here rather than counted twice.
               proposedRate: proposed - hall,
@@ -1495,6 +1635,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                   todayStr={todayStr}
                   conflict={conflicts[index]}
                   focused={focusFunction === index}
+                  demandDates={config?.settings?.demandDates || []}
                   onChange={setFn}
                   onRemove={removeFn}
                 />

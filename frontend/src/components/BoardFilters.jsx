@@ -41,12 +41,13 @@ function FilterToggle({ open, count, onClick }) {
 }
 
 /**
- * A compact row of filters for a board. Each field is a select or a date;
- * values live in the parent so the board can filter its cards client-side.
+ * A compact row of filters for a board. Each field is a select, a date or a
+ * number; values live in the parent so the board can filter its cards
+ * client-side.
  *
  * @param {object} props
  * @param {boolean} props.open
- * @param {Array<{key: string, label: string, type?: 'select'|'date', options?: Array<{value: string, label: string}>, placeholder?: string, min?: string}>} props.fields
+ * @param {Array<{key: string, label: string, type?: 'select'|'date'|'number', options?: Array<{value: string, label: string}>, placeholder?: string, min?: string|number, step?: string|number}>} props.fields
  * @param {Record<string, string>} props.values
  * @param {(key: string, value: string) => void} props.onChange
  * @param {() => void} props.onClear
@@ -74,6 +75,18 @@ function BoardFilters({ open, fields, values, onChange, onClear, className }) {
                 value={values[field.key] || ''}
                 onChange={(e) => onChange(field.key, e.target.value)}
                 className="h-9"
+              />
+            ) : field.type === 'number' ? (
+              <Input
+                id={`bf-${field.key}`}
+                type="number"
+                inputMode="decimal"
+                min={field.min ?? 0}
+                step={field.step || 'any'}
+                placeholder={field.placeholder || 'Any'}
+                value={values[field.key] ?? ''}
+                onChange={(e) => onChange(field.key, e.target.value)}
+                className="h-9 tabular-nums"
               />
             ) : (
               <Select

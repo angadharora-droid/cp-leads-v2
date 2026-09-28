@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import Lead from '../src/models/Lead.js';
 import Enquiry from '../src/models/Enquiry.js';
 import AuditLog from '../src/models/AuditLog.js';
+import Prospect from '../src/models/Prospect.js';
 import * as activity from '../src/services/leadActivity.service.js';
 import { ACTIVITY_FIELDS, activityFor, assignSingleEnquiryActivity } from '../src/services/enquiryActivityScope.service.js';
 import { getMyFollowUps } from '../src/services/followup.service.js';
@@ -121,8 +122,21 @@ test('follow-up feed retains enquiry destinations and ownership filtering', asyn
       instructions: [{ _id: id(13), enquiry: id(5), text: 'Call guest' }],
     }];
   });
+  let prospectFilter;
+  t.mock.method(Prospect, 'find', (filter) => {
+    prospectFilter = filter;
+    return query([{ _id: id(20), name: 'Ravi Sharma',
+      followUps: [
+        { _id: id(21), status: 'open', dueDate: new Date(Date.now() + 86400000) },
+        { _id: id(22), status: 'closed', dueDate: new Date() },
+      ],
+    }]);
+  });
   const result = await getMyFollowUps(executive);
   assert.equal(String(pipeline[0].$match.assignedTo), executive.id);
+  assert.equal(String(prospectFilter.assignedTo), executive.id);
+  assert.equal(result.followUps.length, 2);
+  assert.equal(result.followUps[1].prospectId, id(20));
   assert.equal(result.followUps[0].enquiryId, id(4));
   assert.equal(result.instructions[0].enquiryId, id(5));
 });

@@ -15,6 +15,7 @@ import {
   MoreHorizontal,
   RefreshCw,
   Save,
+  Star,
   Trash2,
   Utensils,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ import { PageHeader } from '@/components/PageHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { openBlob, saveBlob } from '@/components/enquiries/EnquiryActions';
 import { EmailSheetDialog, sheetStatus } from '@/components/prospectus/EmailSheetDialog';
+import MenuCheckCard from '@/components/prospectus/MenuCheckCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -79,6 +81,8 @@ const TEXT_FIELDS = [
   'otherRequirements',
 ];
 const NUMBER_FIELDS = ['pax', 'rate', 'hallRent', 'advanceAmount', 'paidOut', 'netAmount'];
+// Up to three points the team must not miss, printed at the top of the sheet.
+const GOLDEN_POINTS = 3;
 
 function toInputDate(value) {
   if (!value) return '';
@@ -95,6 +99,8 @@ function formFrom(fp) {
   for (const key of NUMBER_FIELDS) form[key] = fp[key] === undefined || fp[key] === null ? '' : String(fp[key]);
   // The food menu by course: the courses are the package's, the dishes are typed one per line.
   form.menuCourses = (fp.menuCourses || []).map((c) => ({ name: c.name, dishes: (c.dishes || []).join('\n') }));
+  // Always three boxes; the empty ones are dropped when saved.
+  form.goldenPoints = Array.from({ length: GOLDEN_POINTS }, (_, i) => fp.goldenPoints?.[i] ?? '');
   return form;
 }
 
@@ -163,6 +169,7 @@ export default function ProspectusPage({ accountsView = false }) {
   const setCourse = (i, value) => setForm((f) => ({ ...f, menuCourses: f.menuCourses.map((c, j) => (j === i ? { ...c, dishes: value } : c)) }));
   const tidyCourse = (i) => () =>
     setForm((f) => ({ ...f, menuCourses: f.menuCourses.map((c, j) => (j === i ? { ...c, dishes: tidyList(c.dishes) } : c)) }));
+  const setGolden = (i, value) => setForm((f) => ({ ...f, goldenPoints: f.goldenPoints.map((p, j) => (j === i ? value : p)) }));
 
   async function save() {
     if (!form) return;
@@ -174,6 +181,7 @@ export default function ProspectusPage({ accountsView = false }) {
         name: c.name,
         dishes: String(c.dishes || '').split('\n').map((d) => d.trim()).filter(Boolean),
       }));
+      payload.goldenPoints = (form.goldenPoints || []).map((p) => String(p || '').trim()).filter(Boolean);
       const res = await api.patch(`/prospectus/${id}`, payload);
       const next = res?.data?.data;
       setData(next);
@@ -354,7 +362,35 @@ export default function ProspectusPage({ accountsView = false }) {
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
-        <FormSections labels={['Function', 'Party', 'Commercials', 'Menu', 'Instructions']} dirty={dirty} readOnly={accountsView}>
+        <FormSections labels={['Golden points', 'Function', 'Party', 'Commercials', 'Menu', 'Instructions']} dirty={dirty} readOnly={accountsView}>
+          <Card className="border-primary/40">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Star className="h-4 w-4 text-primary" />
+                Golden points
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Up to three points the team must not miss — printed at the top of the sheet.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {form.goldenPoints.map((point, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Label htmlFor={`fp-golden-${i}`} className="w-5 shrink-0 text-right text-sm font-semibold text-primary">
+                    {i + 1}.
+                  </Label>
+                  <Input
+                    id={`fp-golden-${i}`}
+                    value={point}
+                    maxLength={200}
+                    onChange={(e) => setGolden(i, e.target.value)}
+                    placeholder={i === 0 ? "e.g. Groom's side is Jain — no onion/garlic in any dish" : ''}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -604,6 +640,16 @@ export default function ProspectusPage({ accountsView = false }) {
               ) : null}
             </CardContent>
           </Card>
+
+          {!accountsView ? (
+            <MenuCheckCard
+              fp={fp}
+              dirty={Boolean(dirty)}
+              onChecked={(menuCheck) =>
+                menuCheck && setData((d) => ({ ...d, prospectus: { ...d.prospectus, menuCheck } }))
+              }
+            />
+          ) : null}
 
           <Card>
             <CardHeader className="pb-3">

@@ -41,8 +41,9 @@ router.get('/banquet/options', authenticate, banquetOptions);
 // GET /api/reports/banquet/export -> the same report as an .xlsx workbook
 router.get('/banquet/export', authenticate, validate(banquetReportQuerySchema, 'query'), banquetExport);
 
-// GET /api/reports/team -> management reports (executive performance and
-// productivity, pipeline ageing, audit report) — admins and managers only
+// GET /api/reports/team -> management reports (executive performance,
+// salesperson scorecard, executive productivity, client productivity,
+// pipeline ageing, audit report) — admins and managers only
 router.get('/team', authenticate, requireRole('admin', 'manager'), validate(teamReportQuerySchema, 'query'), teamOverview);
 
 // GET /api/reports/team/export -> the same reports as an .xlsx workbook

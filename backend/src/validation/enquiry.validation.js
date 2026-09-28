@@ -31,6 +31,18 @@ const functionSchema = z.object({
     .max(200)
     .optional()
     .default([]),
+  // Menu dishes not in Banquet Setup, priced as typed.
+  specialItems: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1, 'Name the special item').max(200),
+        rate: money,
+        pricing: z.enum(['per_pax', 'flat']).optional().default('per_pax'),
+      })
+    )
+    .max(30)
+    .optional()
+    .default([]),
   proposedRate: money.optional(),
   additionalRequirement: z.string().trim().max(2000).optional().default(''),
   notes: z.string().trim().max(2000).optional().default(''),

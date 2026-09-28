@@ -190,6 +190,39 @@ async function createForUsers(userIds, notice) {
   );
 }
 
+/**
+ * A one-off notice to specific people: the managers of a section and/or the
+ * users listed in `interested` (never the actor). Used by the flows that are
+ * not a stage movement — a company request, a payment falling due.
+ */
+export async function notifyPeople({ managers = true, interested = [], module = 'leads', actorId = '', ...notice }) {
+  const recipients = managers
+    ? await recipientsFor({ module, interested, excludeId: actorId })
+    : [...new Set(interested.map(idOf))].filter((id) => id && mongoose.isValidObjectId(id) && id !== String(actorId || ''));
+  if (!recipients.length) return 0;
+  return createForUsers(recipients, { ...notice, actorId });
+}
+
+/** An executive asked for a company to be registered: every manager hears. */
+export async function notifyCompanyRequest(prospect, actor) {
+  const request = prospect.companyRequest || {};
+  const where = [request.branch, request.department].filter(Boolean).join(' · ');
+  return notifyPeople({
+    type: 'company.requested',
+    title: `New company requested: ${request.businessName}`,
+    body: joinParts([
+      `For lead ${prospect.name}`,
+      where,
+      request.requestedByName ? `asked by ${request.requestedByName}` : '',
+    ]),
+    link: `/prospects/${prospect._id}`,
+    entityType: 'Prospect',
+    entityId: String(prospect._id),
+    actorId: actor?.id || '',
+    actorName: actor?.user?.name || '',
+  });
+}
+
 /* --------------------------- Model movements ------------------------------ */
 
 /**

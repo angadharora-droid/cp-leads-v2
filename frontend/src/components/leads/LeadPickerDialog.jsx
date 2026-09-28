@@ -73,10 +73,9 @@ function LeadPickerDialog({ open, onOpenChange, onPick, title, description, lead
     onOpenChange(false);
     const name = q.trim();
     const params = new URLSearchParams();
-    if (name) params.set('businessName', name);
-    if (leadType) params.set('leadType', leadType);
+    if (name) params.set('name', name);
     const qs = params.toString();
-    navigate(qs ? `/leads/new?${qs}` : '/leads/new');
+    navigate(qs ? `/prospects/new?${qs}` : '/prospects/new');
   }
 
   return (

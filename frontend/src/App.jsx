@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
 import { AuthProvider } from '@/context/AuthContext';
@@ -11,6 +11,9 @@ import DashboardPage from '@/pages/DashboardPage';
 import LeadsListPage from '@/pages/LeadsListPage';
 import LeadFormPage from '@/pages/LeadFormPage';
 import LeadDetailPage from '@/pages/LeadDetailPage';
+import ProspectsListPage from '@/pages/ProspectsListPage';
+import ProspectFormPage from '@/pages/ProspectFormPage';
+import ProspectPage from '@/pages/ProspectPage';
 import KitPage from '@/pages/KitPage';
 import FollowUpsPage from '@/pages/FollowUpsPage';
 import ReportsPage from '@/pages/ReportsPage';
@@ -51,6 +54,12 @@ function ThemedToaster() {
   );
 }
 
+/** New leads start as a person; old "new lead" links land on that form. */
+function NewLeadRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/prospects/new${search}`} replace />;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -75,7 +84,11 @@ function App() {
             >
               <Route index element={<DashboardPage />} />
               <Route path="/leads" element={<LeadsListPage />} />
-              <Route path="/leads/new" element={<LeadFormPage />} />
+              <Route path="/leads/new" element={<NewLeadRedirect />} />
+              <Route path="/prospects" element={<ProspectsListPage />} />
+              <Route path="/prospects/new" element={<ProspectFormPage />} />
+              <Route path="/prospects/:id" element={<ProspectPage />} />
+              <Route path="/prospects/:id/edit" element={<ProspectFormPage />} />
               <Route path="/leads/:id" element={<LeadDetailPage />} />
               <Route path="/leads/:id/edit" element={<LeadFormPage />} />
               <Route path="/leads/:id/kits/new" element={<KitPage />} />

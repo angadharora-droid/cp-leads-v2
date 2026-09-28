@@ -75,6 +75,14 @@ const functionProspectusSchema = new Schema(
     boardToRead: { type: String, default: '' },
     deptInstruction: { type: String, default: '' },
     specialInstructions: { type: String, default: '' },
+    // Up to three short "golden points" — the customisations the kitchen and
+    // banquet team must not miss — printed in a highlighted block at the top
+    // of the sheet. Free text like the instructions: a refresh leaves them be.
+    goldenPoints: {
+      type: [{ type: String, trim: true, maxlength: 200 }],
+      default: [],
+      validate: { validator: (list) => !list || list.length <= 3, message: 'At most three golden points' },
+    },
     // The food menu by course. The courses are copied from the booking's
     // menu package (Banquet Setup) when the sheet is made and cannot be added
     // to on the sheet; the dishes under each are typed by the banquet team.
@@ -92,6 +100,15 @@ const functionProspectusSchema = new Schema(
     menu: { type: String, default: '' },
     liquorMenu: { type: String, default: '' },
     otherRequirements: { type: String, default: '' },
+
+    // The last AI check of the menu's balance (flavours, colours, cooking
+    // methods, main ingredients) and the menu it was run on.
+    menuCheck: {
+      at: { type: Date },
+      byName: { type: String },
+      menuKey: { type: String },
+      result: { type: Schema.Types.Mixed },
+    },
 
     madeBy: { type: Schema.Types.ObjectId, ref: 'User' },
     madeByName: { type: String, default: '' },

@@ -43,14 +43,14 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const pageNames = {
-    '/': 'Dashboard', '/leads': 'Leads', '/leads/new': 'New lead', '/enquiries': 'Enquiries',
+    '/': 'Dashboard', '/prospects': 'Leads', '/prospects/new': 'New lead', '/leads': 'Companies & individuals', '/enquiries': 'Enquiries',
     '/rate-contracts': 'Rate contracts', '/banquet-calendar': 'Banquet calendar', '/follow-ups': 'Follow-ups',
     '/reports': 'Reports', '/users': 'Team & access', '/audit': 'Audit logs', '/lead-tracker': 'Lead tracker',
     '/banquet-setup': 'Banquet setup', '/change-password': 'Change password', '/email-settings': 'Email settings', '/notifications': 'Notifications',
     '/prospectus': 'FP overview', '/prospectus/list': 'Functions & sheets', '/prospectus/settings': 'FP settings',
     '/estimates': 'Estimate overview', '/estimates/list': 'Sheets & estimates', '/estimates/settings': 'Estimate settings',
   };
-  const pageName = pageNames[pathname] || (pathname.startsWith('/leads/') ? 'Lead details' : pathname.startsWith('/enquiries/') ? 'Enquiry details' : pathname.startsWith('/rate-contracts/') ? 'Rate contract' : pathname.startsWith('/prospectus/') || pathname.startsWith('/estimates/sheets/') ? 'Function prospectus' : 'Estimate details');
+  const pageName = pageNames[pathname] || (pathname.startsWith('/prospects/') ? 'Lead' : pathname.startsWith('/leads/') ? 'Company / individual' : pathname.startsWith('/enquiries/') ? 'Enquiry details' : pathname.startsWith('/rate-contracts/') ? 'Rate contract' : pathname.startsWith('/prospectus/') || pathname.startsWith('/estimates/sheets/') ? 'Function prospectus' : 'Estimate details');
   const isLeads = section === 'leads';
 
   async function handleLogout() {
@@ -112,7 +112,7 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
             <Button
               size="sm"
               className="hidden md:inline-flex"
-              onClick={() => navigate('/leads/new')}
+              onClick={() => navigate('/prospects/new')}
             >
               <Plus className="h-4 w-4" />
               New lead
@@ -120,7 +120,7 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
             <Button
               size="icon"
               className="md:hidden"
-              onClick={() => navigate('/leads/new')}
+              onClick={() => navigate('/prospects/new')}
               aria-label="New lead"
             >
               <Plus className="h-5 w-5" />

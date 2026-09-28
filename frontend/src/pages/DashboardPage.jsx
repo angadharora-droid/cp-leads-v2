@@ -771,7 +771,7 @@ function AttentionStrip() {
             </Link>
           </Button>
           <Button size="sm" asChild>
-            <Link to="/leads/new">
+            <Link to="/prospects/new">
               <Plus className="h-4 w-4" />
               New lead
             </Link>

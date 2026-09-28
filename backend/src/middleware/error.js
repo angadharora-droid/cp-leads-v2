@@ -30,6 +30,10 @@ export function errorHandler(err, req, res, _next) {
     details = Object.fromEntries(
       Object.entries(err.errors || {}).map(([k, v]) => [k, v.message])
     );
+  } else if (err.name === 'MulterError') {
+    statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 422;
+    code = err.code || 'UPLOAD_ERROR';
+    message = err.code === 'LIMIT_FILE_SIZE' ? 'The file is too large (10 MB at most)' : err.message;
   } else if (err.name === 'CastError') {
     statusCode = 400;
     code = 'INVALID_ID';

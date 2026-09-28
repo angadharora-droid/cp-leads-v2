@@ -2,6 +2,7 @@ import env from './config/env.js';
 import { connectDB } from './config/db.js';
 import app from './app.js';
 import { startFollowUpReminders } from './services/notification.service.js';
+import { startPaymentSweep } from './services/payment.service.js';
 
 async function start() {
   try {
@@ -14,6 +15,8 @@ async function start() {
 
     // Follow-ups falling due today or slipping overdue raise in-app reminders.
     startFollowUpReminders();
+    // Payments falling due tell the team, and email the client where the booking opted in.
+    startPaymentSweep();
 
     const shutdown = (signal) => {
       console.log(`[server] ${signal} received, shutting down...`);

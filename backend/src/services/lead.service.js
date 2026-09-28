@@ -312,14 +312,14 @@ function cleanDepartmentInput(input) {
   return { branch, name };
 }
 
-function sameNode(a, b) {
+export function sameNode(a, b) {
   return (
     String(a.branch || '').toLowerCase() === String(b.branch || '').toLowerCase() &&
     String(a.name || '').toLowerCase() === String(b.name || '').toLowerCase()
   );
 }
 
-function nodeLabel(node) {
+export function nodeLabel(node) {
   return node.branch ? `${node.branch} · ${node.name}` : node.name;
 }
 
@@ -618,6 +618,14 @@ export async function createLead(payload, actor, req) {
   }
 
   data.leadType = payload.leadType === 'individual' ? 'individual' : 'company';
+  // Registering a company (credit line, ledger) is a manager's call.
+  if (data.leadType === 'company' && !isManager(actor)) {
+    throw new AppError(
+      'Only a manager can register a new company — send a company request instead',
+      403,
+      'COMPANY_REQUEST_REQUIRED'
+    );
+  }
   await assertNotDuplicate({
     businessName: data.businessName,
     mobile: data.mobile,

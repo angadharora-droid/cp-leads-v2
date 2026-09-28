@@ -15,6 +15,8 @@ import * as enquiryController from '../controllers/enquiry.controller.js';
 import { createEnquirySchema } from '../validation/enquiry.validation.js';
 import * as arcController from '../controllers/arc.controller.js';
 import { createArcSchema } from '../validation/arc.validation.js';
+import { leadLedgerRouter } from './payment.routes.js';
+import { leadRegistrationRouter } from './registration.routes.js';
 
 import {
   createLeadSchema,
@@ -175,6 +177,13 @@ router.post(
 router.get('/:id/arcs', arcController.listForLead);
 
 router.post('/:id/arcs', validate(createArcSchema), arcController.createForLead);
+
+/* ------------------------- Credit line & ledger ------------------------- */
+
+router.use('/:id', leadLedgerRouter);
+
+// Company registration: GSTIN / PAN and the documents they were read from.
+router.use('/:id', leadRegistrationRouter);
 
 /* ------------------------------ Instructions --------------------------- */
 

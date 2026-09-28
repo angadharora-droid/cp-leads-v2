@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Ban,
   Bell,
+  Building2,
   CalendarClock,
   ClipboardCheck,
   FileSignature,
@@ -13,6 +14,7 @@ import {
   RotateCcw,
   Send,
   Trophy,
+  Wallet,
   XCircle,
 } from 'lucide-react';
 
@@ -48,6 +50,12 @@ const VISUALS = {
   'document.signed': { icon: PenLine, tone: 'success' },
   'follow_up.due': { icon: CalendarClock, tone: 'warning' },
   'follow_up.overdue': { icon: AlertTriangle, tone: 'destructive' },
+  'company.requested': { icon: Building2, tone: 'warning' },
+  'company.registered': { icon: Building2, tone: 'success' },
+  'payment.due': { icon: Wallet, tone: 'warning' },
+  'payment.requested': { icon: Send, tone: 'info' },
+  'payment.received': { icon: Wallet, tone: 'success' },
+  'enquiry.over_tat': { icon: AlertTriangle, tone: 'destructive' },
 };
 
 export const TONE_CLASSES = {

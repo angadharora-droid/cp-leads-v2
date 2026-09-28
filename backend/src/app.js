@@ -24,6 +24,7 @@ import arcRoutes from './routes/arc.routes.js';
 import prospectusRoutes from './routes/prospectus.routes.js';
 import estimateRoutes from './routes/estimate.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import prospectRoutes from './routes/prospect.routes.js';
 import { authenticate } from './middleware/auth.js';
 import { requireModule } from './middleware/rbac.js';
 
@@ -72,11 +73,12 @@ app.use('/api/notifications', notificationRoutes);
 // The Leads CRM is one module; the Function Prospectus section is another.
 // Each user opens only the modules assigned to them (admins open all).
 app.use(
-  ['/api/leads', '/api/kits', '/api/follow-ups', '/api/reports', '/api/dashboard', '/api/enquiries', '/api/banquet', '/api/arcs'],
+  ['/api/leads', '/api/prospects', '/api/kits', '/api/follow-ups', '/api/reports', '/api/dashboard', '/api/enquiries', '/api/banquet', '/api/arcs'],
   authenticate,
   requireModule('leads')
 );
 app.use('/api/leads', leadRoutes);
+app.use('/api/prospects', prospectRoutes);
 app.use('/api/kits', kitRoutes);
 app.use('/api/follow-ups', followUpRoutes);
 app.use('/api/reports', reportRoutes);
