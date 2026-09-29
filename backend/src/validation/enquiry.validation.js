@@ -167,6 +167,30 @@ export const calendarQuerySchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
 });
 
+/** Longest period the calendar grid, its Excel and its print cover. */
+export const CALENDAR_MAX_DAYS = 93;
+
+// Excel / print of the calendar grid: the page's period plus its filters.
+// `venues` and `stages` are comma lists; an empty list means none ticked.
+export const calendarSheetQuerySchema = calendarQuerySchema
+  .extend({
+    venues: z
+      .string()
+      .trim()
+      .regex(/^([0-9a-fA-F]{24}(,[0-9a-fA-F]{24})*)?$/, 'venues must be venue ids')
+      .optional(),
+    stages: z
+      .string()
+      .trim()
+      .regex(/^[a-z,]*$/, 'stages must be stage keys')
+      .optional(),
+  })
+  .refine((q) => q.from <= q.to, { message: 'The start date must be on or before the end date', path: ['to'] })
+  .refine((q) => (Date.parse(q.to) - Date.parse(q.from)) / 86400000 < CALENDAR_MAX_DAYS, {
+    message: `Pick at most ${CALENDAR_MAX_DAYS} days`,
+    path: ['to'],
+  });
+
 /* ------------------------------ Public signing ----------------------------- */
 
 // Drawn signatures arrive as a PNG data URL from the canvas (kept small).

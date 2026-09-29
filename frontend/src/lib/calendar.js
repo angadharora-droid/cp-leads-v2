@@ -1,9 +1,10 @@
 /**
  * Calendar helpers shared by the banquet calendar views.
  *
- * Holds live on a date + venue + session; sessions carry display times such
- * as "08:00 AM" or "18:00", which the week and day views turn into minutes
- * from midnight so a hold can be drawn as a block on a time axis. Blocks are
+ * Holds live on a date + venue + session. The calendar page draws them in a
+ * venue × session grid; sessions also carry display times such as
+ * "08:00 AM" or "18:00", which the enquiry form's day timeline turns into
+ * minutes from midnight to draw a hold as a block on a time axis. Holds are
  * coloured by the enquiry's stage, never by venue.
  */
 import { stageInfo } from '@/lib/enquiryStages';
@@ -42,6 +43,29 @@ export function sessionSpan(session) {
     if (pattern.test(session?.name || '')) return { start: span[0], end: span[1] };
   }
   return { start: 9 * 60, end: 17 * 60 };
+}
+
+/**
+ * The column labels the banquet team writes on its sheet — B/f, Lunch, HT,
+ * Dinner, LN — for any other session its name, or its initials when long.
+ * Kept in step with backend/src/services/banquetCalendarSheet.service.js.
+ */
+export function sessionShortLabel(name = '') {
+  const text = String(name).trim();
+  if (/break\s*fast/i.test(text)) return 'B/f';
+  if (/lunch/i.test(text)) return 'Lunch';
+  if (/hi(gh)?[\s-]*tea/i.test(text)) return 'HT';
+  if (/dinner/i.test(text)) return 'Dinner';
+  if (/late/i.test(text)) return 'LN';
+  if (text.length <= 7) return text;
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length > 1 ? words.map((w) => w[0].toUpperCase()).join('') : `${text.slice(0, 4)}.`;
+}
+
+/** One or two letters for the narrowest columns: B, L, HT, D, LN. */
+export function sessionTinyLabel(name) {
+  const short = sessionShortLabel(name);
+  return short.length <= 2 ? short : short[0].toUpperCase();
 }
 
 /** "8 AM", "12 PM", "6:30 PM" — short axis labels. */

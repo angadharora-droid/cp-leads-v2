@@ -1140,7 +1140,9 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
  * @param {number|null} [props.focusFunction] index of the function the panel
  *   was opened on (a function card was clicked); it is scrolled into view
  * @param {object|null} [props.prefill] new enquiry only: department and
- *   contact to start from (a lead that was just linked)
+ *   contact to start from (a lead that was just linked), and/or `function`
+ *   ({ date: 'yyyy-MM-dd', venue, sessions }) — the calendar cell it was
+ *   started from
  * @param {boolean} [props.readOnly] the enquiry is won, lost or cancelled:
  *   everything shows, nothing can be changed or saved
  */
@@ -1271,7 +1273,8 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
         gstNumber: lead?.gstNumber || '',
         panNumber: lead?.panNumber || '',
         paymentTerms: '30% Now, Balance 60 Days',
-        functions: [emptyFunction()],
+        // Started from a free calendar cell: date, venue and session filled in.
+        functions: [prefill?.function ? { ...emptyFunction(), ...prefill.function } : emptyFunction()],
         room: emptyRoom(),
       });
     }

@@ -2,6 +2,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { sendOk } from '../utils/apiResponse.js';
 import * as enquiryService from '../services/enquiry.service.js';
 import { getEnquiryLifecycle } from '../services/enquiryLifecycle.service.js';
+import { calendarExcel, calendarPdf } from '../services/banquetCalendarSheet.service.js';
 
 export const createForLead = asyncHandler(async (req, res) => {
   const enquiry = await enquiryService.createEnquiry(req.params.id, req.body, req.user, req);
@@ -182,6 +183,16 @@ export const calendar = asyncHandler(async (req, res) => {
   return sendOk(res, result);
 });
 
+/** The calendar grid as an .xlsx, same period and filters as the page. */
+export const calendarExport = asyncHandler(async (req, res) => {
+  return sendFile(res, await calendarExcel(req.query));
+});
+
+/** The calendar grid as a landscape PDF for printing. */
+export const calendarPrint = asyncHandler(async (req, res) => {
+  return sendFile(res, await calendarPdf(req.query));
+});
+
 export default {
   createForLead,
   listForLead,
@@ -210,4 +221,6 @@ export default {
   downloadProformaPdf,
   downloadCreditForm,
   calendar,
+  calendarExport,
+  calendarPrint,
 };
