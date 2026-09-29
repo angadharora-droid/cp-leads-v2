@@ -58,6 +58,12 @@ export const deleteSession = asyncHandler(async (req, res) => {
   return sendOk(res, result);
 });
 
+/** Adds a pasted list of venues, sessions or menu options to one property. */
+export const bulkAdd = asyncHandler(async (req, res) => {
+  const result = await configService.bulkAdd(req.body, req.user, req);
+  return sendOk(res, result, 201);
+});
+
 /** Copies one property's setup into the others picked. */
 export const copySetup = asyncHandler(async (req, res) => {
   const result = await configService.copySetup(req.body, req.user, req);
@@ -65,6 +71,7 @@ export const copySetup = asyncHandler(async (req, res) => {
 });
 
 export default {
+  bulkAdd,
   copySetup,
   getConfig,
   updateSettings,
