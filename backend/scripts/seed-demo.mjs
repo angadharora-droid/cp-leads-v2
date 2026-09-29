@@ -35,6 +35,9 @@ const kitService = await import('../src/services/kit.service.js');
 const log = (...args) => console.log('[demo]', ...args);
 
 await connectDB();
+// Properties exist and anything older belongs to HCP.
+const propertyService = await import('../src/services/property.service.js');
+await propertyService.migrateToProperties();
 
 /* ------------------------------- Actor ----------------------------------- */
 
@@ -55,26 +58,28 @@ const actor = { id: String(admin._id), role: 'admin', user: admin };
 
 const { VENUES, SESSIONS, CATALOG } = await import('./banquet-catalog.mjs');
 
+// The demo configuration is HCP's; the other properties are set up in Banquet Setup.
 for (const [i, name] of VENUES.entries()) {
   await Venue.updateOne(
-    { name },
-    { $setOnInsert: { name, active: true, order: i + 1, createdBy: admin._id } },
+    { property: 'HCP', name },
+    { $setOnInsert: { property: 'HCP', name, active: true, order: i + 1, createdBy: admin._id } },
     { upsert: true }
   );
 }
 for (const session of SESSIONS) {
   await BanquetSession.updateOne(
-    { name: session.name },
-    { $setOnInsert: { ...session, active: true, createdBy: admin._id } },
+    { property: 'HCP', name: session.name },
+    { $setOnInsert: { ...session, property: 'HCP', active: true, createdBy: admin._id } },
     { upsert: true }
   );
 }
 for (const item of CATALOG) {
   await BanquetCatalog.updateOne(
-    { kind: item.kind, name: item.name },
+    { property: 'HCP', kind: item.kind, name: item.name },
     {
       $setOnInsert: {
         ...item,
+        property: 'HCP',
         pricing: item.pricing || 'per_pax',
         rate: item.rate || 0,
         active: true,
@@ -86,10 +91,13 @@ for (const item of CATALOG) {
 }
 log('banquet configuration ready');
 
-const venues = Object.fromEntries((await Venue.find()).map((v) => [v.name, v]));
-const sessions = Object.fromEntries((await BanquetSession.find()).map((s) => [s.name, s]));
+const venues = Object.fromEntries((await Venue.find({ property: 'HCP' })).map((v) => [v.name, v]));
+const sessions = Object.fromEntries((await BanquetSession.find({ property: 'HCP' })).map((s) => [s.name, s]));
 const catalog = {};
-for (const item of await BanquetCatalog.find()) catalog[`${item.kind}:${item.name}`] = item;
+for (const item of await BanquetCatalog.find({ property: 'HCP' })) catalog[`${item.kind}:${item.name}`] = item;
+// CPA's room categories, for the room enquiry.
+const cpa = await propertyService.getProperty('CPA');
+const roomType = (name) => String(cpa.roomTypes.find((t) => t.name === name)?._id || '');
 const cat = (kind, name) => catalog[`${kind}:${name}`]?._id;
 
 /* --------------------------------- Leads ---------------------------------- */
@@ -234,7 +242,7 @@ const ENQUIRIES = [
   {
     lead: 'Persistent Systems',
     department: 'Learning & Development',
-    kind: 'both',
+    kind: 'banquet',
     contactName: 'Sneha Rao',
     functions: [
       {
@@ -249,7 +257,24 @@ const ENQUIRIES = [
         requirements: [cat('requirement', 'LCD Projector with 6x4 Tripod Screen (3000 Lumens)')],
       },
     ],
-    room: { checkIn: day(20), checkOut: day(22), rooms: '12', notes: 'Twin sharing, CP plan' },
+  },
+  {
+    // Rooms at CPA (the only property with a room calendar for now).
+    lead: 'Persistent Systems',
+    department: 'Learning & Development',
+    property: 'CPA',
+    kind: 'room',
+    contactName: 'Sneha Rao',
+    functions: [],
+    room: {
+      checkIn: day(20),
+      checkOut: day(22),
+      types: [
+        { type: roomType('Premium'), count: 10 },
+        { type: roomType('Club'), count: 2 },
+      ],
+      notes: 'Twin sharing, CP plan',
+    },
   },
   {
     lead: 'Ravi Sharma',
@@ -324,12 +349,13 @@ const createdEnquiries = [];
 for (const spec of ENQUIRIES) {
   const lead = leads[spec.lead];
   if (!lead) continue;
-  const already = await Enquiry.countDocuments({ lead: lead._id });
+  const already = await Enquiry.countDocuments({ lead: lead._id, property: spec.property || 'HCP' });
   if (already) {
     log(`enquiry exists, skipped: ${spec.lead}`);
     continue;
   }
   const body = {
+    property: spec.property || 'HCP',
     kind: spec.kind,
     contactName: spec.contactName,
     contactEmail: lead.email,

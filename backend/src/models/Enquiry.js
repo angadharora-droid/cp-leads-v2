@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 import { attachMovementHooks } from './movementHooks.js';
+import { PROPERTY_CODES } from './Property.js';
 
 const { Schema, model } = mongoose;
 
@@ -160,12 +161,28 @@ const functionSchema = new Schema(
   { _id: true }
 );
 
-/** Minimal room block — the room side (ARC, room calendar) is parked for now. */
+/** Rooms of one category asked for: the property's room type and how many. */
+const roomTypeLineSchema = new Schema(
+  {
+    type: { type: Schema.Types.ObjectId },
+    name: { type: String, default: '' },
+    count: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
+/**
+ * Rooms asked for with the enquiry. Dates are "yyyy-MM-dd". On a property
+ * with room categories, `types` says how many rooms of each category are
+ * held every night from check-in to the night before check-out (what the
+ * room calendar counts) and `rooms` is their total.
+ */
 const roomDetailsSchema = new Schema(
   {
     checkIn: { type: String, default: '' },
     checkOut: { type: String, default: '' },
     rooms: { type: String, default: '' },
+    types: { type: [roomTypeLineSchema], default: undefined },
     notes: { type: String, default: '' },
   },
   { _id: false }
@@ -489,6 +506,9 @@ const emailLogSchema = new Schema(
 const enquirySchema = new Schema(
   {
     lead: { type: Schema.Types.ObjectId, ref: 'Lead', required: true, index: true },
+    // The hotel the enquiry is for (HCP, CPA, CPNM): its venues, menus,
+    // letterhead and document numbers.
+    property: { type: String, enum: PROPERTY_CODES, required: true, default: 'HCP', index: true },
     // The branch/department node (Lead.departments._id) this enquiry belongs
     // to. Required for company leads; unset for individuals.
     department: { type: Schema.Types.ObjectId, index: true },

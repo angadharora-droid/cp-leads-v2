@@ -31,6 +31,9 @@ const deleteUnused = process.argv.includes('--delete-unused');
 const log = (...args) => console.log('[catalog]', ...args);
 
 await connectDB();
+// The list in banquet-catalog.mjs is HCP's; other properties are left alone.
+await (await import('../src/services/property.service.js')).migrateToProperties();
+const P = 'HCP';
 const admin = await User.findOne({ role: 'admin' });
 const createdBy = admin?._id;
 
@@ -38,27 +41,27 @@ const createdBy = admin?._id;
 let venuesUpserted = 0;
 for (const [i, name] of VENUES.entries()) {
   const res = await Venue.updateOne(
-    { name },
-    { $set: { name, active: true, order: i + 1 }, $setOnInsert: { createdBy } },
+    { property: P, name },
+    { $set: { name, active: true, order: i + 1 }, $setOnInsert: { property: P, createdBy } },
     { upsert: true }
   );
   venuesUpserted += res.upsertedCount ? 1 : 0;
 }
-const staleVenues = await Venue.updateMany({ name: { $nin: VENUES }, active: { $ne: false } }, { $set: { active: false } });
+const staleVenues = await Venue.updateMany({ property: P, name: { $nin: VENUES }, active: { $ne: false } }, { $set: { active: false } });
 log(`venues: ${VENUES.length} kept/updated (${venuesUpserted} new), ${staleVenues.modifiedCount} deactivated`);
 
 /* -------------------------------- Sessions --------------------------------- */
 let sessionsUpserted = 0;
 for (const session of SESSIONS) {
   const res = await BanquetSession.updateOne(
-    { name: session.name },
-    { $set: { ...session, active: true }, $setOnInsert: { createdBy } },
+    { property: P, name: session.name },
+    { $set: { ...session, active: true }, $setOnInsert: { property: P, createdBy } },
     { upsert: true }
   );
   sessionsUpserted += res.upsertedCount ? 1 : 0;
 }
 const staleSessions = await BanquetSession.updateMany(
-  { name: { $nin: SESSIONS.map((s) => s.name) }, active: { $ne: false } },
+  { property: P, name: { $nin: SESSIONS.map((s) => s.name) }, active: { $ne: false } },
   { $set: { active: false } }
 );
 log(`sessions: ${SESSIONS.length} kept/updated (${sessionsUpserted} new), ${staleSessions.modifiedCount} deactivated`);
@@ -67,7 +70,7 @@ log(`sessions: ${SESSIONS.length} kept/updated (${sessionsUpserted} new), ${stal
 let catalogUpserted = 0;
 for (const item of CATALOG) {
   const res = await BanquetCatalog.updateOne(
-    { kind: item.kind, name: item.name },
+    { property: P, kind: item.kind, name: item.name },
     {
       $set: {
         rate: item.rate || 0,
@@ -77,14 +80,14 @@ for (const item of CATALOG) {
         order: item.order || 0,
         active: true,
       },
-      $setOnInsert: { createdBy },
+      $setOnInsert: { property: P, createdBy },
     },
     { upsert: true }
   );
   catalogUpserted += res.upsertedCount ? 1 : 0;
 }
 const keep = CATALOG.map((c) => ({ kind: c.kind, name: c.name }));
-const stale = await BanquetCatalog.find({ $nor: keep.map((k) => ({ kind: k.kind, name: k.name })) });
+const stale = await BanquetCatalog.find({ property: P, $nor: keep.map((k) => ({ kind: k.kind, name: k.name })) });
 let deactivated = 0;
 let deleted = 0;
 for (const item of stale) {

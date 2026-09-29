@@ -30,6 +30,7 @@ import {
 import { BoardFilters, FilterToggle, activeFilterCount } from '@/components/BoardFilters';
 import { fnVenues, fnSessions } from '@/lib/banquetFunctions';
 import { departmentLabel, isIndividual } from '@/lib/departments';
+import { propertyLabel, useProperties } from '@/lib/properties';
 import {
   fnLabel,
   fnVenueNames,
@@ -152,7 +153,14 @@ function soonLabel(days) {
   return `Event in ${days} days`;
 }
 
-/** One enquiry on the board: who, which department, what, when, where. */
+/** "10 Premium, 2 Club", or "12 rooms" on room blocks from before categories. */
+function roomSummary(room) {
+  const lines = (room?.types || []).filter((t) => t.count > 0).map((t) => `${t.count} ${t.name}`);
+  if (lines.length) return lines.join(', ');
+  return room?.rooms ? `${room.rooms} rooms` : '';
+}
+
+/** One enquiry on the board: who, which property and department, what, when, where. */
 function EnquiryCard({ enquiry, flags = NO_FLAGS, onOpen }) {
   const lead = enquiry.lead && typeof enquiry.lead === 'object' ? enquiry.lead : null;
   const firstFn = enquiry.functions?.[0];
@@ -198,6 +206,12 @@ function EnquiryCard({ enquiry, flags = NO_FLAGS, onOpen }) {
           </p>
           {dept ? <p className="truncate text-xs font-medium text-primary">{dept}</p> : null}
         </div>
+        <span
+          className="shrink-0 rounded border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground"
+          title="Property"
+        >
+          {enquiry.property || 'HCP'}
+        </span>
       </div>
       {soon || stale || flags.tat || enquiry.stage === 'waitlist' || enquiry.waitlist?.freedAt || isDatePassed(enquiry) ? (
         <div className="mt-2 flex flex-wrap gap-1">
@@ -270,7 +284,7 @@ function EnquiryCard({ enquiry, flags = NO_FLAGS, onOpen }) {
             <BedDouble className="h-3 w-3 shrink-0" />
             <span className="truncate tabular-nums">
               {roomDate(room.checkIn)} → {roomDate(room.checkOut)}
-              {room.rooms ? ` · ${room.rooms} rooms` : ''}
+              {roomSummary(room) ? ` · ${roomSummary(room)}` : ''}
             </span>
           </p>
         ) : null}
@@ -303,6 +317,7 @@ function EnquiryCard({ enquiry, flags = NO_FLAGS, onOpen }) {
  * Lost are the manual moves, done from the enquiry itself.
  */
 const EMPTY_FILTERS = {
+  property: '',
   venue: '',
   session: '',
   functionType: '',
@@ -347,6 +362,7 @@ export default function EnquiriesBoardPage() {
   const [config, setConfig] = useState({ venues: [], sessions: [] });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const properties = useProperties();
   const [execs, setExecs] = useState([]);
 
   // Executives for the admin "Assigned to" filter.
@@ -366,17 +382,22 @@ export default function EnquiriesBoardPage() {
     };
   }, [isAdmin]);
 
-  // Venue/session config for the enquiry dialog opened from this page.
+  // The filtered property's venues, sessions and types for the filters
+  // (HCP's when no property is picked; the dialog loads its own).
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const res = await api.get('/banquet/config');
-        setConfig(res?.data?.data || { venues: [], sessions: [] });
+        const res = await api.get('/banquet/config', { params: { property: filters.property || 'HCP' } });
+        if (alive) setConfig(res?.data?.data || { venues: [], sessions: [] });
       } catch {
         // Dialog shows its own "no venues/sessions" notice.
       }
     })();
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [filters.property]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -422,6 +443,7 @@ export default function EnquiriesBoardPage() {
       return true;
     };
     return (enquiries || []).filter((e) => {
+      if (f.property && (e.property || 'HCP') !== f.property) return false;
       if (f.kind && e.kind !== f.kind) return false;
       if (f.assignedTo) {
         const owner = e.lead?.assignedTo;
@@ -486,23 +508,34 @@ export default function EnquiriesBoardPage() {
 
   const filterFields = [
     {
-      key: 'venue',
-      label: 'Venue',
-      options: (config.venues || []).map((v) => ({ value: v._id, label: v.name })),
-      placeholder: 'Any venue',
+      key: 'property',
+      label: 'Property',
+      options: (properties || []).map((p) => ({ value: p.code, label: propertyLabel(p) })),
+      placeholder: 'All properties',
     },
-    {
-      key: 'session',
-      label: 'Session',
-      options: (config.sessions || []).map((s) => ({ value: s._id, label: s.name })),
-      placeholder: 'Any session',
-    },
-    {
-      key: 'functionType',
-      label: 'Function type',
-      options: (config.functionTypes || []).map((t) => ({ value: t._id, label: t.name })),
-      placeholder: 'Any type',
-    },
+    // Venues, sessions and types belong to one property: offered once it is picked.
+    ...(filters.property
+      ? [
+          {
+            key: 'venue',
+            label: 'Venue',
+            options: (config.venues || []).map((v) => ({ value: v._id, label: v.name })),
+            placeholder: 'Any venue',
+          },
+          {
+            key: 'session',
+            label: 'Session',
+            options: (config.sessions || []).map((s) => ({ value: s._id, label: s.name })),
+            placeholder: 'Any session',
+          },
+          {
+            key: 'functionType',
+            label: 'Function type',
+            options: (config.functionTypes || []).map((t) => ({ value: t._id, label: t.name })),
+            placeholder: 'Any type',
+          },
+        ]
+      : []),
     {
       key: 'kind',
       label: 'Enquiry for',
@@ -599,7 +632,13 @@ export default function EnquiriesBoardPage() {
         open={filtersOpen}
         fields={filterFields}
         values={filters}
-        onChange={(key, value) => setFilters((f) => ({ ...f, [key]: value }))}
+        onChange={(key, value) =>
+          setFilters((f) =>
+            key === 'property'
+              ? { ...f, property: value, venue: '', session: '', functionType: '' }
+              : { ...f, [key]: value }
+          )
+        }
         onClear={() => setFilters(EMPTY_FILTERS)}
       />
 

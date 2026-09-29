@@ -89,6 +89,8 @@ function CatalogSection({
   onChanged,
   withRate = false,
   placeholder,
+  // The property new options are added to (HCP, CPA, CPNM).
+  property = 'HCP',
 }) {
   const [draft, setDraft] = useState({ name: '', rate: '', pricing: 'per_pax', courses: '' });
   const [adding, setAdding] = useState(false);
@@ -111,6 +113,7 @@ function CatalogSection({
     setAdding(true);
     try {
       await api.post('/banquet/catalog', {
+        property,
         kind,
         name,
         rate: withRate ? Number(draft.rate) || 0 : 0,

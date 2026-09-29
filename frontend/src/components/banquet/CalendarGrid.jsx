@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { format, isBefore, isToday, isWeekend, startOfDay } from 'date-fns';
-import { Plus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { stageInfo } from '@/lib/enquiryStages';
@@ -83,9 +82,8 @@ function HoldChip({ hold, density, colors, onOpen }) {
  * The banquet calendar as the hotel's venue sheet: venues down the side,
  * sessions across the top — for several dates, a group of session columns
  * under each date — and every hold in its cell, coloured by stage. The venue
- * column and the headers stay put while the grid scrolls. A free cell on a
- * current or future date starts a new enquiry for that venue, session and
- * date.
+ * column and the headers stay put while the grid scrolls. The grid only
+ * shows; new enquiries start from the New enquiry button.
  *
  * @param {object} props
  * @param {Date[]} props.days dates shown, in order
@@ -95,10 +93,9 @@ function HoldChip({ hold, density, colors, onOpen }) {
  * @param {(venueId: string) => number} props.countFor holds on a venue in the period
  * @param {(hold: object) => object} props.colorsFor stage colours for a hold
  * @param {(hold: object) => void} props.onOpenHold
- * @param {(slot: {date: Date, venue: object, session: object}) => void} [props.onNewAt]
  * @param {(date: Date) => void} [props.onOpenDay] a date heading was clicked
  */
-function CalendarGrid({ days, venues, sessions, cellOf, countFor, colorsFor, onOpenHold, onNewAt, onOpenDay }) {
+function CalendarGrid({ days, venues, sessions, cellOf, countFor, colorsFor, onOpenHold, onOpenDay }) {
   const scrollRef = useRef(null);
   const density = gridDensity(days.length);
   const nS = sessions.length;
@@ -238,19 +235,14 @@ function CalendarGrid({ days, venues, sessions, cellOf, countFor, colorsFor, onO
                     const todayCol = isToday(day);
                     return sessions.map((s, si) => {
                       const holds = cellOf(key, vid, String(s._id));
-                      const canAdd = Boolean(onNewAt) && !past && venue.active !== false && s.active !== false;
-                      const slot = `${venue.name}, ${s.name}, ${format(day, 'EEE d MMM')}`;
                       return (
                         <td
                           key={`${key}-${s._id}`}
-                          onClick={canAdd ? () => onNewAt({ date: day, venue, session: s }) : undefined}
-                          title={canAdd && !holds.length ? `New enquiry — ${slot}` : undefined}
                           className={cn(
-                            'group border-b border-r border-border/60 p-0.5 align-top',
+                            'border-b border-r border-border/60 p-0.5 align-top',
                             lastOfDay(si) && dayEdge,
                             todayCol && 'bg-primary/[0.05]',
-                            past && 'bg-muted/40',
-                            canAdd && 'cursor-pointer hover:bg-muted/60'
+                            past && 'bg-muted/40'
                           )}
                         >
                           <div className={cn('flex flex-col gap-0.5', ROW_MIN[density])}>
@@ -263,12 +255,6 @@ function CalendarGrid({ days, venues, sessions, cellOf, countFor, colorsFor, onO
                                 onOpen={onOpenHold}
                               />
                             ))}
-                            {canAdd && !holds.length ? (
-                              <Plus
-                                className="m-auto h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                                aria-hidden="true"
-                              />
-                            ) : null}
                           </div>
                         </td>
                       );

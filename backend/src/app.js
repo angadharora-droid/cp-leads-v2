@@ -25,6 +25,7 @@ import prospectusRoutes from './routes/prospectus.routes.js';
 import estimateRoutes from './routes/estimate.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import prospectRoutes from './routes/prospect.routes.js';
+import propertyRoutes from './routes/property.routes.js';
 import { authenticate } from './middleware/auth.js';
 import { requireModule } from './middleware/rbac.js';
 
@@ -89,6 +90,8 @@ app.use('/api/banquet', banquetRoutes);
 app.use('/api/arcs', arcRoutes);
 app.use('/api/prospectus', prospectusRoutes);
 app.use('/api/estimates', estimateRoutes);
+// The hotels (HCP, CPA, CPNM) — read by every module, edited by admins.
+app.use('/api/properties', propertyRoutes);
 // Public client-facing signing links (token-gated, unauthenticated).
 app.use('/api/sign', signRoutes);
 

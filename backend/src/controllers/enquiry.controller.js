@@ -183,6 +183,11 @@ export const calendar = asyncHandler(async (req, res) => {
   return sendOk(res, result);
 });
 
+/** Rooms held night by night on a property with rooms. */
+export const roomCalendar = asyncHandler(async (req, res) => {
+  return sendOk(res, await enquiryService.roomCalendarFeed(req.query));
+});
+
 /** The calendar grid as an .xlsx, same period and filters as the page. */
 export const calendarExport = asyncHandler(async (req, res) => {
   return sendFile(res, await calendarExcel(req.query));
@@ -223,4 +228,5 @@ export default {
   calendar,
   calendarExport,
   calendarPrint,
+  roomCalendar,
 };

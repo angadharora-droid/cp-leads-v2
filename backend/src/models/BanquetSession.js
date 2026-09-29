@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { PROPERTY_CODES } from './Property.js';
+
 const { Schema, model } = mongoose;
 
 /**
@@ -9,6 +11,8 @@ const { Schema, model } = mongoose;
  */
 const banquetSessionSchema = new Schema(
   {
+    // Each property keeps its own sessions; names are unique within one.
+    property: { type: String, enum: PROPERTY_CODES, required: true, default: 'HCP', index: true },
     name: { type: String, required: true, trim: true },
     startTime: { type: String, default: '' },
     endTime: { type: String, default: '' },
@@ -26,7 +30,7 @@ const banquetSessionSchema = new Schema(
   { timestamps: true }
 );
 
-banquetSessionSchema.index({ name: 1 }, { unique: true });
+banquetSessionSchema.index({ property: 1, name: 1 }, { unique: true });
 
 const BanquetSession = model('BanquetSession', banquetSessionSchema);
 

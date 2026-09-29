@@ -1,5 +1,6 @@
 import BanquetSession from '../models/BanquetSession.js';
 import { renderToBuffer } from './pdf.service.js';
+import { assertPrintable, getProperty } from './property.service.js';
 import {
   SHEET,
   CARD_LAYOUT,
@@ -353,16 +354,20 @@ function roomBlock(enquiry) {
     'Rate exclusive of taxes',
     'Estimated Revenue',
   ];
-  const row = [
+  // One row per room category held; older room blocks have a single row.
+  const line = (category, count) => [
     cell(room.checkIn ? dateLabel(room.checkIn) : ''),
     cell(room.checkOut ? dateLabel(room.checkOut) : ''),
     cell(''),
-    cell(room.notes || ''),
+    cell(category),
     cell(''),
-    cell(room.rooms || '', { alignment: 'right' }),
+    cell(count, { alignment: 'right' }),
     cell('', { alignment: 'right' }),
     cell('', { alignment: 'right' }),
   ];
+  const rows = room.types?.length
+    ? room.types.map((t) => line(t.name, String(t.count)))
+    : [line(room.notes || '', room.rooms || '')];
   const otherCategory = {
     columns: [
       { width: '*', ...para('In case of any other Room category, the room would be charged at the following rates.', { bold: true }) },
@@ -378,7 +383,7 @@ function roomBlock(enquiry) {
     sectionTitle('Room Requirement Information', { margin: [0, 14, 0, 6] }),
     dataTable(
       [56, 56, 58, '*', 46, 44, 62, 66],
-      [headers.map((h, i) => head(h, i >= 5 ? 'right' : 'left')), row]
+      [headers.map((h, i) => head(h, i >= 5 ? 'right' : 'left')), ...rows]
     ),
     otherCategory,
     cardRow(
@@ -535,9 +540,9 @@ function requirementsTable(enquiry, { showRack = false } = {}) {
   ];
 }
 
-/** The configured sessions in the template's "Morning session – 8.00 am till 12 noon" style. */
-export async function sessionTimingLines() {
-  const sessions = await BanquetSession.find().sort({ order: 1, name: 1 }).lean();
+/** The property's sessions in the template's "Morning session – 8.00 am till 12 noon" style. */
+export async function sessionTimingLines(property = 'HCP') {
+  const sessions = await BanquetSession.find({ property: property || 'HCP' }).sort({ order: 1, name: 1 }).lean();
   if (sessions.length) {
     return sessions.map((s) => {
       const start = s.startTime || '';
@@ -554,8 +559,8 @@ export async function sessionTimingLines() {
   ];
 }
 
-async function facilitiesBlock(savedSessionTimings) {
-  const sessions = savedSessionTimings ?? await sessionTimingLines();
+async function facilitiesBlock(savedSessionTimings, property) {
+  const sessions = savedSessionTimings ?? await sessionTimingLines(property);
   const columns = cardRow(
     [
       card('Session timings', [bullets(sessions)]),
@@ -814,18 +819,23 @@ function termsBlock() {
 
 /* ------------------------------ Bank and contact --------------------------- */
 
-const BANK_DETAILS = [
-  ['Bank Name', 'HDFC BANK LTD'],
-  ['Account name', 'HOTEL AMARJIT PVT. LTD.'],
-  ['Account number', '50200013055259'],
-  ['Account Type', 'CURRENT ACCOUNT'],
-  ['Bank Branch Address', '9, HINDUSTAN COLONY, NEAR SAI MANDIR, CHAWLA PALACE,\nWARDHA ROAD, NAGPUR- 440015'],
-];
+/** The property's bank details as set under Banquet Setup → Property details. */
+function bankRows(property) {
+  const bank = property?.bank || {};
+  return [
+    ['Bank Name', bank.bankName],
+    ['Account name', bank.accountName],
+    ['Account number', bank.accountNumber],
+    ['Account Type', bank.accountType],
+    ['Bank Branch Address', bank.branchAddress],
+    ...(bank.ifsc ? [['IFSC', bank.ifsc]] : []),
+  ];
+}
 
-function closingCards(preparedBy) {
+function closingCards(preparedBy, property) {
   return cardRow(
     [
-      card('Bank Details', [kvTable(BANK_DETAILS, { labelWidth: 92 })]),
+      card('Bank Details', [kvTable(bankRows(property), { labelWidth: 92 })]),
       card('Point of Contact', [
         kvTable(
           [
@@ -872,15 +882,18 @@ async function documentContent(enquiry, lead, { kind, preparedBy, clientSignatur
   // rate below it, so the client sees the published rate and the rate they
   // were given.
   const showRack = kind === 'proposal' || kind === 'contract';
+  // The hotel the enquiry is for: its sessions and bank details print.
+  const property = await getProperty(enquiry.property || 'HCP');
+  assertPrintable(property);
   const content = [
     factsStrip(enquiry, kind),
     guestCards(enquiry, lead),
     ...(hasRooms(enquiry) ? roomBlock(enquiry) : roomSections()),
     ...eventMealTable(enquiry, { showRack }),
     ...requirementsTable(enquiry, { showRack }),
-    await facilitiesBlock(sessionTimings),
+    await facilitiesBlock(sessionTimings, property.code),
     ...termsBlock(),
-    { ...closingCards(preparedBy), unbreakable: true },
+    { ...closingCards(preparedBy, property), unbreakable: true },
   ];
   if (clientSignature) content.push(acceptanceCard(clientSignature));
   return content;

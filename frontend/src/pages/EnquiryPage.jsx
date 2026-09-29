@@ -356,7 +356,7 @@ export default function EnquiryPage() {
 
       <PageHeader
         showTitle
-        eyebrow={`Enquiry · ${KIND_LABELS[enquiry.kind] || 'Banquet'}`}
+        eyebrow={`${enquiry.property || 'HCP'} · Enquiry · ${KIND_LABELS[enquiry.kind] || 'Banquet'}`}
         title={
           <span className="flex flex-wrap items-center gap-3">
             {lead.businessName || 'Enquiry'}
@@ -592,7 +592,11 @@ export default function EnquiryPage() {
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {formatDate(enquiry.room.checkIn)} → {formatDate(enquiry.room.checkOut)}
-                    {enquiry.room.rooms ? ` · ${enquiry.room.rooms} rooms` : ''}
+                    {(enquiry.room.types || []).length
+                      ? ` · ${enquiry.room.types.map((t) => `${t.count} ${t.name}`).join(', ')}`
+                      : enquiry.room.rooms
+                        ? ` · ${enquiry.room.rooms} rooms`
+                        : ''}
                     {enquiry.room.notes ? ` · ${enquiry.room.notes}` : ''}
                   </p>
                 </div>

@@ -44,7 +44,7 @@ function Topbar({ section = 'leads', onMenuClick, onSearchClick, collapsed, onTo
   const { pathname } = useLocation();
   const pageNames = {
     '/': 'Dashboard', '/prospects': 'Leads', '/prospects/new': 'New lead', '/leads': 'Companies & individuals', '/enquiries': 'Enquiries',
-    '/rate-contracts': 'Rate contracts', '/banquet-calendar': 'Banquet calendar', '/follow-ups': 'Follow-ups',
+    '/rate-contracts': 'Rate contracts', '/banquet-calendar': 'Banquet calendar', '/room-calendar': 'Room calendar', '/follow-ups': 'Follow-ups',
     '/reports': 'Reports', '/users': 'Team & access', '/audit': 'Audit logs', '/lead-tracker': 'Lead tracker',
     '/banquet-setup': 'Banquet setup', '/change-password': 'Change password', '/email-settings': 'Email settings', '/notifications': 'Notifications',
     '/prospectus': 'FP overview', '/prospectus/list': 'Functions & sheets', '/prospectus/settings': 'FP settings',

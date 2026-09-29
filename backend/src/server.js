@@ -3,10 +3,13 @@ import { connectDB } from './config/db.js';
 import app from './app.js';
 import { startFollowUpReminders } from './services/notification.service.js';
 import { startPaymentSweep } from './services/payment.service.js';
+import { migrateToProperties } from './services/property.service.js';
 
 async function start() {
   try {
     await connectDB();
+    // Properties exist and older data is HCP's before any request arrives.
+    await migrateToProperties();
     const server = app.listen(env.PORT, () => {
       console.log(
         `[server] CPH Leads CRM API running at http://localhost:${env.PORT} (${env.NODE_ENV})`
