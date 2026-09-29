@@ -16,6 +16,7 @@ import {
   catalogSchema,
   catalogUpdateSchema,
   copySetupSchema,
+  bulkAddSchema,
 } from '../validation/banquetConfig.validation.js';
 import { calendarQuerySchema, calendarSheetQuerySchema, configQuerySchema } from '../validation/enquiry.validation.js';
 
@@ -40,6 +41,9 @@ router.get('/calendar/print', validate(calendarSheetQuerySchema, 'query'), enqui
 
 // Copy one property's venues, sessions, menus (and rules) into other properties.
 router.post('/copy', requireRole('admin'), validate(copySetupSchema), configController.copySetup);
+
+// Many venues, sessions or menu options for one property at once.
+router.post('/bulk', requireRole('admin'), validate(bulkAddSchema), configController.bulkAdd);
 
 router.put(
   '/settings',

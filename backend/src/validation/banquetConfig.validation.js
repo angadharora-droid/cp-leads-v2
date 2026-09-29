@@ -89,6 +89,19 @@ export const catalogSchema = catalogBase.extend({ property: propertyCode });
 
 export const catalogUpdateSchema = catalogBase.partial();
 
+/**
+ * Many entries for one section at once (a list pasted into Banquet Setup);
+ * each row is checked like a single add.
+ */
+const bulkItems = (schema) => z.array(schema).min(1, 'Nothing to add').max(300, 'Add at most 300 at a time');
+export const bulkAddSchema = z.discriminatedUnion('part', [
+  z.object({ property: propertyCode, part: z.literal('venues'), items: bulkItems(venueBase) }),
+  z.object({ property: propertyCode, part: z.literal('sessions'), items: bulkItems(sessionBase) }),
+  ...['functionType', 'menuType', 'addOn', 'liquor', 'requirement'].map((kind) =>
+    z.object({ property: propertyCode, part: z.literal(kind), items: bulkItems(catalogBase.omit({ kind: true })) })
+  ),
+]);
+
 /** Copy one property's setup into others (entries matched by name; nothing deleted). */
 export const copySetupSchema = z.object({
   from: propertyCode,

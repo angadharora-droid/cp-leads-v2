@@ -14,6 +14,7 @@ import {
   Wine,
   ClipboardList,
   Copy,
+  ListPlus,
 } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
@@ -28,6 +29,7 @@ import DemandTargets from '@/components/banquet/DemandTargets';
 import PropertyDetails from '@/components/banquet/PropertyDetails';
 import PropertySwitch from '@/components/PropertySwitch';
 import CopySetupDialog from '@/components/banquet/CopySetupDialog';
+import BulkAddDialog from '@/components/banquet/BulkAddDialog';
 import { useRememberedProperty } from '@/lib/properties';
 import { Button } from '@/components/ui/button';
 import {
@@ -153,6 +155,7 @@ export default function BanquetSetupPage() {
   const [deleting, setDeleting] = useState(null); // { type: 'venue'|'session', item }
   const [isSavingRule, setIsSavingRule] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [bulkPart, setBulkPart] = useState(null); // 'venues' | 'sessions'
 
   // UX-only state: pending flags and inline-edit drafts.
   const [isAddingVenue, setIsAddingVenue] = useState(false);
@@ -470,7 +473,13 @@ export default function BanquetSetupPage() {
             className="space-y-2"
             noValidate
           >
-            <p className="eyebrow">Add a venue</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="eyebrow">Add a venue</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setBulkPart('venues')}>
+                <ListPlus className="h-4 w-4" aria-hidden="true" />
+                Bulk add
+              </Button>
+            </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
               <div className="space-y-1.5">
                 <Label htmlFor="new-venue">Venue name</Label>
@@ -695,7 +704,13 @@ export default function BanquetSetupPage() {
             className="space-y-2"
             noValidate
           >
-            <p className="eyebrow">Add a session</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="eyebrow">Add a session</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setBulkPart('sessions')}>
+                <ListPlus className="h-4 w-4" aria-hidden="true" />
+                Bulk add
+              </Button>
+            </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_auto] sm:items-end">
               <div className="space-y-1.5">
                 <Label htmlFor="new-session-name">Session name</Label>
@@ -993,6 +1008,16 @@ export default function BanquetSetupPage() {
         onChanged={load}
         withRate
         placeholder="e.g. IMFL package"
+      />
+
+      <BulkAddDialog
+        open={Boolean(bulkPart)}
+        onOpenChange={(open) => !open && setBulkPart(null)}
+        part={bulkPart || 'venues'}
+        property={property}
+        title={bulkPart === 'sessions' ? 'Sessions' : 'Venues'}
+        existing={bulkPart === 'sessions' ? sessions : venues}
+        onAdded={load}
       />
 
       <CopySetupDialog open={copyOpen} onOpenChange={setCopyOpen} from={property} config={config} onCopied={load} />

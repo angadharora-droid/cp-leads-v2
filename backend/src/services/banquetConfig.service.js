@@ -338,6 +338,48 @@ export async function deleteSession(id, actor, req) {
   return { deleted: true };
 }
 
+/* -------------------------------- Bulk add -------------------------------- */
+
+const BULK_LABEL = {
+  venues: 'venue',
+  sessions: 'session',
+  ...Object.fromEntries(Object.entries(CATALOG_LABEL).map(([kind, label]) => [kind, label.toLowerCase()])),
+};
+
+/**
+ * Adds many entries to one section of a property's setup at once (a list
+ * pasted into Banquet Setup). A name the section already has — in any
+ * letter case — is skipped, never overwritten; so is a repeat within the list.
+ */
+export async function bulkAdd(body, actor, req) {
+  const { property, part, items } = body;
+  const isCatalog = Boolean(CATALOG_LABEL[part]);
+  const model = part === 'venues' ? Venue : part === 'sessions' ? BanquetSession : BanquetCatalog;
+  const scope = isCatalog ? { property, kind: part } : { property };
+  const taken = new Set((await model.find(scope).select('name').lean()).map((d) => d.name.trim().toLowerCase()));
+  const added = [];
+  const skipped = [];
+  for (const item of items) {
+    const key = item.name.trim().toLowerCase();
+    if (taken.has(key)) {
+      skipped.push(item.name);
+      continue;
+    }
+    taken.add(key);
+    added.push(await model.create({ ...item, ...scope, createdBy: actor?.id }));
+  }
+  if (added.length) {
+    await writeAudit({
+      req,
+      actor,
+      action: 'banquet.setup.bulk',
+      entityType: isCatalog ? 'BanquetCatalog' : part === 'venues' ? 'Venue' : 'BanquetSession',
+      summary: `${property}: ${added.length} ${BULK_LABEL[part]}${added.length === 1 ? '' : 's'} added in bulk${skipped.length ? ` (${skipped.length} already there)` : ''}`,
+    });
+  }
+  return { added: added.length, skipped };
+}
+
 /* ------------------------- Copy between properties ------------------------ */
 
 // What can be copied, and the fields that travel with each entry.
@@ -420,5 +462,6 @@ export default {
   createSession,
   updateSession,
   deleteSession,
+  bulkAdd,
   copySetup,
 };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, ListPlus, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import EmptyState from '@/components/EmptyState';
+import BulkAddDialog from '@/components/banquet/BulkAddDialog';
 
 const PRICING_LABEL = { per_pax: 'per guest', flat: 'flat' };
 
@@ -98,6 +99,7 @@ function CatalogSection({
   const [editing, setEditing] = useState(null); // { id, name, rate, pricing, courses }
   const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const inactive = items.filter((i) => !i.active).length;
   // A menu package carries the courses a Function Prospectus lists its dishes under.
@@ -194,12 +196,27 @@ function CatalogSection({
               <CardDescription className="mt-0.5">{description}</CardDescription>
             </div>
           </div>
-          {inactive ? (
-            <p className="text-xs text-muted-foreground">
-              {inactive} inactive, hidden from new enquiries
-            </p>
-          ) : null}
+          <div className="flex flex-col items-end gap-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
+              <ListPlus className="h-4 w-4" aria-hidden="true" />
+              Bulk add
+            </Button>
+            {inactive ? (
+              <p className="text-xs text-muted-foreground">
+                {inactive} inactive, hidden from new enquiries
+              </p>
+            ) : null}
+          </div>
         </div>
+        <BulkAddDialog
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          part={kind}
+          property={property}
+          title={title}
+          existing={items}
+          onAdded={onChanged}
+        />
       </CardHeader>
 
       <CardContent className="space-y-4">
