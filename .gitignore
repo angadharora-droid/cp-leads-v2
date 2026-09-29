@@ -24,3 +24,5 @@ Thumbs.db
 # Local review artefacts
 .tmp/
 font-samples/
+.env.*
+*.env

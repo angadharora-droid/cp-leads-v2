@@ -335,6 +335,8 @@ export default function BanquetSetupPage() {
       <PropertySwitch
         value={property}
         onChange={(next) => {
+          // The tab already open is left as it is (clearing it would never reload).
+          if (next === property) return;
           setEditing(null);
           setConfig(null);
           setProperty(next);

@@ -860,6 +860,7 @@ export default function BanquetCalendarPage() {
           <PropertySwitch
             value={property}
             onChange={(next) => {
+              if (next === property) return;
               // Another hotel has other venues: start from all of them.
               setVenueOn(null);
               setHolds(null);
