@@ -15,6 +15,7 @@ import {
   settingsSchema,
   catalogSchema,
   catalogUpdateSchema,
+  copySetupSchema,
 } from '../validation/banquetConfig.validation.js';
 import { calendarQuerySchema, calendarSheetQuerySchema, configQuerySchema } from '../validation/enquiry.validation.js';
 
@@ -36,6 +37,9 @@ router.get('/calendar/export', validate(calendarSheetQuerySchema, 'query'), enqu
 router.get('/calendar/print', validate(calendarSheetQuerySchema, 'query'), enquiryController.calendarPrint);
 
 /* ------------------------- Admin-only configuration ------------------------ */
+
+// Copy one property's venues, sessions, menus (and rules) into other properties.
+router.post('/copy', requireRole('admin'), validate(copySetupSchema), configController.copySetup);
 
 router.put(
   '/settings',

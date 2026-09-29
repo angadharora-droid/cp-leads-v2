@@ -88,3 +88,13 @@ const catalogBase = z.object({
 export const catalogSchema = catalogBase.extend({ property: propertyCode });
 
 export const catalogUpdateSchema = catalogBase.partial();
+
+/** Copy one property's setup into others (entries matched by name; nothing deleted). */
+export const copySetupSchema = z.object({
+  from: propertyCode,
+  to: z.array(propertyCode).min(1, 'Pick at least one property to copy to').max(PROPERTY_CODES.length),
+  parts: z
+    .array(z.enum(['venues', 'sessions', 'functionType', 'menuType', 'addOn', 'requirement', 'liquor', 'rules']))
+    .min(1, 'Pick what to copy'),
+  overwrite: z.boolean().optional().default(false),
+});
