@@ -16,7 +16,7 @@ import {
   catalogSchema,
   catalogUpdateSchema,
 } from '../validation/banquetConfig.validation.js';
-import { calendarQuerySchema } from '../validation/enquiry.validation.js';
+import { calendarQuerySchema, calendarSheetQuerySchema } from '../validation/enquiry.validation.js';
 
 const router = Router();
 
@@ -27,6 +27,10 @@ router.get('/config', configController.getConfig);
 
 // Availability calendar feed — visible to every signed-in user.
 router.get('/calendar', validate(calendarQuerySchema, 'query'), enquiryController.calendar);
+
+// The same grid as an Excel workbook, and as a landscape PDF to print.
+router.get('/calendar/export', validate(calendarSheetQuerySchema, 'query'), enquiryController.calendarExport);
+router.get('/calendar/print', validate(calendarSheetQuerySchema, 'query'), enquiryController.calendarPrint);
 
 /* ------------------------- Admin-only configuration ------------------------ */
 

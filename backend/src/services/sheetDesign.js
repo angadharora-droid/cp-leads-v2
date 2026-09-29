@@ -26,6 +26,8 @@ const MARGIN_TOP = 92;
 const MARGIN_BOTTOM = 56;
 export const SIDE = 36;
 export const CONTENT_WIDTH = PAGE_WIDTH - 2 * SIDE;
+/** Body width on an A4 landscape sheet (the banquet calendar grid). */
+export const LANDSCAPE_CONTENT_WIDTH = PAGE_HEIGHT - 2 * SIDE;
 /** Where the page body ends, measured from the top of the page. */
 export const CONTENT_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM;
 
@@ -111,11 +113,14 @@ export function statusChip(text, { color = SHEET.maroon } = {}) {
  * The document shell: logo and title header on every page, rule and
  * three-part footer with the page count. `content` is the page body;
  * `chip` is a status label ({ text, color } or a string) under the title.
+ * `landscape` turns the sheet sideways for wide grids.
  */
-export function sheetDocument({ title, subtitle, chip, content, footer = {}, fontSize = 9 }) {
+export function sheetDocument({ title, subtitle, chip, content, footer = {}, fontSize = 9, landscape = false }) {
   const chipNode = !chip ? null : typeof chip === 'string' ? statusChip(chip) : statusChip(chip.text, { color: chip.color });
+  const width = landscape ? LANDSCAPE_CONTENT_WIDTH : CONTENT_WIDTH;
   return {
     pageSize: 'A4',
+    pageOrientation: landscape ? 'landscape' : 'portrait',
     pageMargins: [SIDE, MARGIN_TOP, SIDE, MARGIN_BOTTOM],
     defaultStyle: { font: 'Helvetica', fontSize, color: SHEET.ink, lineHeight: 1.15 },
     images: { sheetLogo: CP_HEADER_LOGO },
@@ -135,13 +140,13 @@ export function sheetDocument({ title, subtitle, chip, content, footer = {}, fon
             },
           ],
         },
-        { canvas: [{ type: 'line', x1: 0, y1: 6, x2: CONTENT_WIDTH, y2: 6, lineWidth: 1.2, lineColor: SHEET.maroon }] },
+        { canvas: [{ type: 'line', x1: 0, y1: 6, x2: width, y2: 6, lineWidth: 1.2, lineColor: SHEET.maroon }] },
       ],
     }),
     footer: (page, pages) => ({
       margin: [SIDE, 12, SIDE, 0],
       stack: [
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: CONTENT_WIDTH, y2: 0, lineWidth: 0.5, lineColor: SHEET.line }] },
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.5, lineColor: SHEET.line }] },
         {
           columns: [
             { width: '*', text: footer.left || '' },
