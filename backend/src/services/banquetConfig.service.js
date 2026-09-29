@@ -338,6 +338,74 @@ export async function deleteSession(id, actor, req) {
   return { deleted: true };
 }
 
+/* ------------------------- Copy between properties ------------------------ */
+
+// What can be copied, and the fields that travel with each entry.
+const COPY_PARTS = {
+  venues: { model: Venue, fields: ['hallCharge', 'active', 'order'] },
+  sessions: { model: BanquetSession, fields: ['startTime', 'endTime', 'targets', 'active', 'order'] },
+  functionType: { model: BanquetCatalog, kind: 'functionType', fields: ['rate', 'pricing', 'notes', 'courses', 'active', 'order'] },
+  menuType: { model: BanquetCatalog, kind: 'menuType', fields: ['rate', 'pricing', 'notes', 'courses', 'active', 'order'] },
+  addOn: { model: BanquetCatalog, kind: 'addOn', fields: ['rate', 'pricing', 'notes', 'courses', 'active', 'order'] },
+  requirement: { model: BanquetCatalog, kind: 'requirement', fields: ['rate', 'pricing', 'notes', 'courses', 'active', 'order'] },
+  liquor: { model: BanquetCatalog, kind: 'liquor', fields: ['rate', 'pricing', 'notes', 'courses', 'active', 'order'] },
+};
+
+/**
+ * Copies one property's Banquet Setup into others, for entries every hotel
+ * shares. An entry is matched by name: one the target lacks is added; one
+ * it already has is left alone unless `overwrite`, which brings its rate,
+ * times and status in line. Nothing is ever deleted, and the copies are
+ * independent — a later change in the source does not follow them.
+ * `rules` copies the slot rule and demand dates.
+ */
+export async function copySetup(body, actor, req) {
+  const { from, to, parts, overwrite = false } = body;
+  const targets = [...new Set(to)].filter((code) => code !== from);
+  if (!targets.length) throw new AppError('Pick at least one other property to copy to', 422, 'NO_TARGET');
+  const result = {};
+  for (const target of targets) {
+    const counts = { added: 0, updated: 0, unchanged: 0 };
+    for (const part of parts.filter((p) => COPY_PARTS[p])) {
+      const { model, kind, fields } = COPY_PARTS[part];
+      const scope = kind ? { kind } : {};
+      const source = await model.find({ property: from, ...scope }).lean();
+      for (const item of source) {
+        const values = Object.fromEntries(fields.filter((f) => item[f] !== undefined).map((f) => [f, item[f]]));
+        const existing = await model.findOne({ property: target, ...scope, name: item.name });
+        if (!existing) {
+          await model.create({ property: target, ...scope, name: item.name, ...values, createdBy: actor?.id });
+          counts.added += 1;
+        } else if (overwrite) {
+          Object.assign(existing, values);
+          await existing.save();
+          counts.updated += 1;
+        } else {
+          counts.unchanged += 1;
+        }
+      }
+    }
+    if (parts.includes('rules')) {
+      const [own, theirs] = await Promise.all([getPropertySettings(from), getPropertySettings(target)]);
+      theirs.slotRule = own.slotRule;
+      theirs.demandDates = own.demandDates.map((d) => ({ from: d.from, to: d.to, level: d.level, note: d.note }));
+      theirs.updatedBy = actor?.id;
+      await theirs.save();
+    }
+    result[target] = counts;
+  }
+  await writeAudit({
+    req,
+    actor,
+    action: 'banquet.setup.copy',
+    entityType: 'BanquetSettings',
+    summary: `Banquet Setup copied from ${from} to ${targets.join(', ')} (${parts.join(', ')})${overwrite ? ', existing entries updated' : ''}: ${targets
+      .map((t) => `${t} +${result[t].added}${overwrite ? ` ~${result[t].updated}` : ''}`)
+      .join(', ')}`,
+  });
+  return { from, result };
+}
+
 export default {
   getSettings,
   getPropertySettings,
@@ -352,4 +420,5 @@ export default {
   createSession,
   updateSession,
   deleteSession,
+  copySetup,
 };

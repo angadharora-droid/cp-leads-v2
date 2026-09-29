@@ -13,6 +13,7 @@ import {
   UtensilsCrossed,
   Wine,
   ClipboardList,
+  Copy,
 } from 'lucide-react';
 
 import { api, getErrorMessage } from '@/lib/api';
@@ -26,6 +27,7 @@ import PipelineRules from '@/components/banquet/PipelineRules';
 import DemandTargets from '@/components/banquet/DemandTargets';
 import PropertyDetails from '@/components/banquet/PropertyDetails';
 import PropertySwitch from '@/components/PropertySwitch';
+import CopySetupDialog from '@/components/banquet/CopySetupDialog';
 import { useRememberedProperty } from '@/lib/properties';
 import { Button } from '@/components/ui/button';
 import {
@@ -150,6 +152,7 @@ export default function BanquetSetupPage() {
   const [newSession, setNewSession] = useState({ name: '', startTime: '', endTime: '' });
   const [deleting, setDeleting] = useState(null); // { type: 'venue'|'session', item }
   const [isSavingRule, setIsSavingRule] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
 
   // UX-only state: pending flags and inline-edit drafts.
   const [isAddingVenue, setIsAddingVenue] = useState(false);
@@ -334,9 +337,13 @@ export default function BanquetSetupPage() {
           setProperty(next);
         }}
       />
-      <p className="text-sm text-muted-foreground">
+      <p className="min-w-0 flex-1 text-sm text-muted-foreground">
         Venues, sessions, menus, the slot rule and demand dates below are {property}&apos;s own.
       </p>
+      <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)} disabled={!config || config.property !== property}>
+        <Copy className="h-4 w-4" aria-hidden="true" />
+        Copy to other properties
+      </Button>
     </div>
   );
 
@@ -987,6 +994,8 @@ export default function BanquetSetupPage() {
         withRate
         placeholder="e.g. IMFL package"
       />
+
+      <CopySetupDialog open={copyOpen} onOpenChange={setCopyOpen} from={property} config={config} onCopied={load} />
 
       <ConfirmDialog
         open={Boolean(deleting)}

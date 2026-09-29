@@ -58,7 +58,14 @@ export const deleteSession = asyncHandler(async (req, res) => {
   return sendOk(res, result);
 });
 
+/** Copies one property's setup into the others picked. */
+export const copySetup = asyncHandler(async (req, res) => {
+  const result = await configService.copySetup(req.body, req.user, req);
+  return sendOk(res, result);
+});
+
 export default {
+  copySetup,
   getConfig,
   updateSettings,
   createCatalogItem,
