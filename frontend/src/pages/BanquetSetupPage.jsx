@@ -24,6 +24,9 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import CatalogSection from '@/components/banquet/CatalogSection';
 import PipelineRules from '@/components/banquet/PipelineRules';
 import DemandTargets from '@/components/banquet/DemandTargets';
+import PropertyDetails from '@/components/banquet/PropertyDetails';
+import PropertySwitch from '@/components/PropertySwitch';
+import { useRememberedProperty } from '@/lib/properties';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -139,6 +142,8 @@ function toCharge(value) {
 }
 
 export default function BanquetSetupPage() {
+  // Everything below the switch belongs to one property (HCP, CPA, CPNM).
+  const [property, setProperty] = useRememberedProperty('cph.setup.property');
   const [config, setConfig] = useState(null);
   const [newVenue, setNewVenue] = useState('');
   const [newVenueCharge, setNewVenueCharge] = useState('');
@@ -159,12 +164,12 @@ export default function BanquetSetupPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get('/banquet/config');
+      const res = await api.get('/banquet/config', { params: { property } });
       setConfig(res?.data?.data || null);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load banquet setup'));
     }
-  }, []);
+  }, [property]);
 
   useEffect(() => {
     load();
@@ -179,7 +184,7 @@ export default function BanquetSetupPage() {
     setVenueError('');
     setIsAddingVenue(true);
     try {
-      await api.post('/banquet/venues', { name: newVenue.trim(), hallCharge: toCharge(newVenueCharge) });
+      await api.post('/banquet/venues', { property, name: newVenue.trim(), hallCharge: toCharge(newVenueCharge) });
       toast.success('Venue added');
       setNewVenue('');
       setNewVenueCharge('');
@@ -213,6 +218,7 @@ export default function BanquetSetupPage() {
     setIsAddingSession(true);
     try {
       await api.post('/banquet/sessions', {
+        property,
         name: newSession.name.trim(),
         startTime: newSession.startTime.trim(),
         endTime: newSession.endTime.trim(),
@@ -250,7 +256,7 @@ export default function BanquetSetupPage() {
   async function changeSlotRule(slotRule) {
     setIsSavingRule(true);
     try {
-      await api.put('/banquet/settings', { slotRule });
+      await api.put('/banquet/settings', { property, slotRule });
       toast.success('Slot rule updated');
       load();
     } catch (err) {
@@ -318,13 +324,30 @@ export default function BanquetSetupPage() {
     }
   }
 
-  if (!config) {
+  const propertyBar = (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card p-2 shadow-card sm:px-3">
+      <PropertySwitch
+        value={property}
+        onChange={(next) => {
+          setEditing(null);
+          setConfig(null);
+          setProperty(next);
+        }}
+      />
+      <p className="text-sm text-muted-foreground">
+        Venues, sessions, menus, the slot rule and demand dates below are {property}&apos;s own.
+      </p>
+    </div>
+  );
+
+  if (!config || config.property !== property) {
     return (
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <PageHeader
           title="Banquet setup"
           description="Venues, sessions, the slot rule, stage TAT and the payment schedule used by enquiries and the banquet calendar."
         />
+        {propertyBar}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -359,6 +382,11 @@ export default function BanquetSetupPage() {
         title="Banquet setup"
         description="Venues, sessions and the slot rule used by enquiries and the banquet calendar."
       />
+
+      {propertyBar}
+
+      {/* The property's letterhead, tax and bank details, and its room categories */}
+      <PropertyDetails code={property} />
 
       {/* Slot rule */}
       <Card>
@@ -903,6 +931,7 @@ export default function BanquetSetupPage() {
           drive the automatic rack-rate calculation on an enquiry. */}
       <CatalogSection
         kind="functionType"
+        property={property}
         icon={PartyPopper}
         title="Function types"
         description="What the event is: wedding, conference, birthday. No rate attached."
@@ -913,6 +942,7 @@ export default function BanquetSetupPage() {
 
       <CatalogSection
         kind="menuType"
+        property={property}
         icon={UtensilsCrossed}
         title="Menu types"
         description="The base menu and its rate. Picked once per function."
@@ -924,6 +954,7 @@ export default function BanquetSetupPage() {
 
       <CatalogSection
         kind="addOn"
+        property={property}
         icon={Plus}
         title="Add-on menus"
         description="Extras that add to the rate: live counters, welcome drinks, desserts."
@@ -935,6 +966,7 @@ export default function BanquetSetupPage() {
 
       <CatalogSection
         kind="requirement"
+        property={property}
         icon={ClipboardList}
         title="Additional requirements"
         description="Stage, décor, AV, DJ — ticked on a function and added to the rate."
@@ -946,6 +978,7 @@ export default function BanquetSetupPage() {
 
       <CatalogSection
         kind="liquor"
+        property={property}
         icon={Wine}
         title="Liquor options"
         description="Bar packages and corkage. Ticked on a function when the client wants them."

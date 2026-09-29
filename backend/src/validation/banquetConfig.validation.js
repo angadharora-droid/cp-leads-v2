@@ -1,17 +1,24 @@
 import { z } from 'zod';
 
-export const venueSchema = z.object({
+import { PROPERTY_CODES } from '../models/Property.js';
+
+/** The hotel a Banquet Setup entry or setting belongs to. */
+export const propertyCode = z.enum(PROPERTY_CODES);
+
+const venueBase = z.object({
   name: z.string().trim().min(1, 'Venue name is required').max(200),
   hallCharge: z.coerce.number().min(0).max(100000000).optional(),
   active: z.boolean().optional(),
   order: z.number().int().min(0).max(10000).optional(),
 });
 
-export const venueUpdateSchema = venueSchema.partial();
+export const venueSchema = venueBase.extend({ property: propertyCode });
+
+export const venueUpdateSchema = venueBase.partial();
 
 const target = z.coerce.number().min(0).max(1000000000).optional();
 
-export const sessionSchema = z.object({
+const sessionBase = z.object({
   name: z.string().trim().min(1, 'Session name is required').max(200),
   startTime: z.string().trim().max(50).optional().default(''),
   endTime: z.string().trim().max(50).optional().default(''),
@@ -20,12 +27,16 @@ export const sessionSchema = z.object({
   order: z.number().int().min(0).max(10000).optional(),
 });
 
-export const sessionUpdateSchema = sessionSchema.partial();
+export const sessionSchema = sessionBase.extend({ property: propertyCode });
+
+export const sessionUpdateSchema = sessionBase.partial();
 
 const tatDays = z.coerce.number().int().min(0).max(365).optional();
 
 export const settingsSchema = z
   .object({
+    // Whose slot rule / demand dates these are; the rest is group-wide.
+    property: propertyCode.optional(),
     slotRule: z.enum(['multi-hold', 'exclusive']).optional(),
     stageTatDays: z
       .object({ enquiry: tatDays, proposal: tatDays, waitlist: tatDays, provisional: tatDays })
@@ -59,10 +70,10 @@ export const settingsSchema = z
       )
       .optional(),
   })
-  .refine((obj) => Object.keys(obj).length > 0, { message: 'No settings to update' });
+  .refine((obj) => Object.keys(obj).some((key) => key !== 'property'), { message: 'No settings to update' });
 
 /** Function types, menu types, add-on menus and liquor packages. */
-export const catalogSchema = z.object({
+const catalogBase = z.object({
   kind: z.enum(['functionType', 'menuType', 'addOn', 'liquor', 'requirement']),
   name: z.string().trim().min(1, 'Name is required').max(200),
   rate: z.coerce.number().min(0).max(10000000).optional().default(0),
@@ -74,4 +85,6 @@ export const catalogSchema = z.object({
   order: z.number().int().min(0).max(10000).optional(),
 });
 
-export const catalogUpdateSchema = catalogSchema.partial();
+export const catalogSchema = catalogBase.extend({ property: propertyCode });
+
+export const catalogUpdateSchema = catalogBase.partial();

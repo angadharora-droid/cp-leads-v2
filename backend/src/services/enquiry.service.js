@@ -12,8 +12,10 @@ import { writeAudit } from '../utils/audit.js';
 import { decryptSecret } from '../utils/mailCrypto.js';
 import { uploadBufferToGridFS, getKitFilesBucket } from '../utils/gridfs.js';
 import { sendMail, isEmailConfigured } from './email.service.js';
-import { getSettings } from './banquetConfig.service.js';
+import { getPropertySettings } from './banquetConfig.service.js';
+import { assertPrintable, getProperty, totalRooms } from './property.service.js';
 import { cleanSpecialItems, specialAsItems } from '../utils/specialItems.js';
+import { roomTypesLine } from '../utils/rooms.js';
 import { ensureSchedule, applyAdvance, afterWon, syncBookingLedger, paymentSummary } from './payment.service.js';
 // Proposal, contract and their signed copies print in the house sheet style;
 // the pro-forma, addendum and credit form keep the Word-template layouts.
@@ -186,7 +188,13 @@ function snapshotOf(enquiry) {
     functions: (enquiry.functions || []).map(agreedFunction),
     room:
       room && (room.checkIn || room.checkOut || room.rooms || room.notes)
-        ? { checkIn: room.checkIn || '', checkOut: room.checkOut || '', rooms: room.rooms || '', notes: room.notes || '' }
+        ? {
+            checkIn: room.checkIn || '',
+            checkOut: room.checkOut || '',
+            rooms: room.rooms || '',
+            ...(room.types?.length ? { types: room.types.map((t) => ({ type: t.type, name: t.name, count: t.count })) } : {}),
+            notes: room.notes || '',
+          }
         : undefined,
   };
 }
@@ -206,7 +214,9 @@ function snapshotKey(snapshot) {
     fn.additionalRequirement,
     fn.total,
   ]);
-  const room = snapshot?.room ? [snapshot.room.checkIn, snapshot.room.checkOut, snapshot.room.rooms, snapshot.room.notes] : null;
+  const room = snapshot?.room
+    ? [snapshot.room.checkIn, snapshot.room.checkOut, snapshot.room.rooms, roomTypesLine(snapshot.room), snapshot.room.notes]
+    : null;
   return JSON.stringify({ fns, room });
 }
 
@@ -370,12 +380,15 @@ function assertNoDuplicateSlots(functions) {
  * that is neither lost nor itself waiting; under the 'multi-hold' rule only a
  * Won booking counts (soft holds share). Waitlisted enquiries never hold.
  *
- * @param {{wonOnly?: boolean}} [options] only Won bookings count as holders
+ * Venues belong to one property, so only that property's enquiries can
+ * hold them; `property` picks whose slot rule applies.
+ *
+ * @param {{wonOnly?: boolean, property?: string}} [options] only Won bookings count as holders
  * @returns {Promise<{enquiry: object, name: string, label: string}|null>}
  */
 async function findSlotHolder(functions, excludeEnquiryId, options = {}) {
   if (!functions || functions.length === 0) return null;
-  const settings = await getSettings();
+  const settings = await getPropertySettings(options.property || 'HCP');
   const wonOnly = options.wonOnly || settings.slotRule === 'multi-hold';
 
   let best = null;
@@ -497,7 +510,7 @@ async function releaseWaitlist(functions, excludeEnquiryId) {
   for (const candidate of waiting) {
     const wants = slotKeys(candidate.functions);
     if (![...wants].some((k) => freed.has(k))) continue;
-    const holder = await findSlotHolder(candidate.functions, candidate._id);
+    const holder = await findSlotHolder(candidate.functions, candidate._id, { property: candidate.property });
     if (holder) {
       candidate.waitlist.heldBy = holder.enquiry._id;
       candidate.waitlist.heldByName = holder.name;
@@ -551,8 +564,8 @@ function assertFutureDates(functions) {
   }
 }
 
-/** Every venue, add-on room and session picked must still exist in Banquet Setup. */
-async function assertRefsExist(functions) {
+/** Every venue, add-on room and session picked must exist in the property's Banquet Setup. */
+async function assertRefsExist(functions, property) {
   const venueIds = new Set();
   const sessionIds = new Set();
   for (const fn of functions || []) {
@@ -563,14 +576,14 @@ async function assertRefsExist(functions) {
     functionSessionIds(fn).forEach((id) => sessionIds.add(id));
   }
   const [venues, sessions] = await Promise.all([
-    venueIds.size ? Venue.find({ _id: { $in: [...venueIds] } }).select('_id') : [],
-    sessionIds.size ? BanquetSession.find({ _id: { $in: [...sessionIds] } }).select('_id') : [],
+    venueIds.size ? Venue.find({ _id: { $in: [...venueIds] }, property }).select('_id') : [],
+    sessionIds.size ? BanquetSession.find({ _id: { $in: [...sessionIds] }, property }).select('_id') : [],
   ]);
   if (venues.length !== venueIds.size) {
-    throw new AppError('A selected venue or add-on room no longer exists', 422, 'BAD_VENUE');
+    throw new AppError(`A selected venue or add-on room is not one of ${property}'s venues`, 422, 'BAD_VENUE');
   }
   if (sessions.length !== sessionIds.size) {
-    throw new AppError('A selected session no longer exists', 422, 'BAD_SESSION');
+    throw new AppError(`A selected session is not one of ${property}'s sessions`, 422, 'BAD_SESSION');
   }
 }
 
@@ -585,7 +598,7 @@ async function assertRefsExist(functions) {
  * proposed rate is formed the same way from those offered rates. Without
  * line rates an explicit `proposedRate` (older clients) or the rack applies.
  */
-async function priceFunctions(functions) {
+async function priceFunctions(functions, property) {
   const list = functions || [];
   const ids = new Set();
   for (const fn of list) {
@@ -607,13 +620,14 @@ async function priceFunctions(functions) {
   for (const fn of list) {
     for (const id of fn.hallChargeVenues || []) if (id) venueIds.add(String(id));
   }
-  const venues = venueIds.size ? await Venue.find({ _id: { $in: [...venueIds] } }).select('name hallCharge') : [];
+  const venues = venueIds.size ? await Venue.find({ _id: { $in: [...venueIds] }, property }).select('name hallCharge') : [];
   const venueById = new Map(venues.map((v) => [String(v._id), v]));
 
   function pick(id, kind, label) {
     if (!id) return null;
     const item = byId.get(String(id));
-    if (!item || item.kind !== kind) {
+    // Menus and rates are the enquiry's own property's.
+    if (!item || item.kind !== kind || (item.property || 'HCP') !== property) {
       throw new AppError(`That ${label} is no longer available in Banquet Setup`, 422, 'BAD_OPTION');
     }
     return item;
@@ -709,26 +723,71 @@ function formatInr(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString('en-IN')}`;
 }
 
+/* ---------------------------------- Rooms --------------------------------- */
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Rooms are taken only where the property has room categories set up (CPA
+ * for now): a check-in before the check-out and a number of rooms per
+ * category, never more than the category has. Returns the room block as
+ * stored — categories in the property's order with their names, and the
+ * total in `rooms`.
+ */
+function normaliseRoomRequest(kind, room, property) {
+  if (!kind || kind === 'banquet') return room;
+  const categories = property.roomTypes || [];
+  if (!totalRooms(property)) {
+    throw new AppError(`${property.code} has no rooms set up — it takes banquet enquiries only`, 422, 'NO_ROOMS');
+  }
+  if (!DAY_KEY.test(room?.checkIn || '') || !DAY_KEY.test(room?.checkOut || '')) {
+    throw new AppError('Rooms: pick the check-in and check-out dates', 422, 'ROOM_DATES');
+  }
+  if (room.checkOut <= room.checkIn) {
+    throw new AppError('Rooms: the check-out must be after the check-in', 422, 'ROOM_DATES');
+  }
+  const asked = new Map();
+  for (const line of room.types || []) {
+    if (line.count > 0) asked.set(String(line.type), (asked.get(String(line.type)) || 0) + line.count);
+  }
+  const types = [];
+  for (const category of categories) {
+    const count = asked.get(String(category._id));
+    if (!count) continue;
+    asked.delete(String(category._id));
+    if (count > category.count) {
+      throw new AppError(`Rooms: ${property.code} has ${category.count} ${category.name} room${category.count === 1 ? '' : 's'}`, 422, 'ROOM_COUNT');
+    }
+    types.push({ type: category._id, name: category.name, count });
+  }
+  if (asked.size) throw new AppError(`Rooms: that room category is not one of ${property.code}'s`, 422, 'ROOM_TYPE');
+  if (!types.length) throw new AppError('Rooms: enter how many rooms of each category', 422, 'ROOM_COUNT');
+  return { ...room, types, rooms: String(types.reduce((sum, t) => sum + t.count, 0)) };
+}
+
 /* --------------------------------- CRUD ----------------------------------- */
 
 export async function createEnquiry(leadId, body, actor, req) {
   const lead = await loadLeadScoped(leadId, actor);
+  const property = await getProperty(body.property);
+  body.room = normaliseRoomRequest(body.kind || 'banquet', body.room, property);
   if (body.kind !== 'room') {
     if (!body.functions || body.functions.length === 0) {
       throw new AppError('Add at least one banquet function', 422, 'NO_FUNCTIONS');
     }
     normaliseFunctionVenues(body.functions);
     assertFutureDates(body.functions);
-    await assertRefsExist(body.functions);
+    await assertRefsExist(body.functions, property.code);
     assertNoDuplicateSlots(body.functions);
-    body.functions = await priceFunctions(body.functions);
+    body.functions = await priceFunctions(body.functions, property.code);
   }
 
   const department = resolveDepartment(lead, body.department);
-  const holder = body.kind !== 'room' ? await findSlotHolder(body.functions, null) : null;
+  const holder = body.kind !== 'room' ? await findSlotHolder(body.functions, null, { property: property.code }) : null;
 
   const enquiry = new Enquiry({
     lead: lead._id,
+    property: property.code,
     department,
     kind: body.kind || 'banquet',
     contactName: body.contactName ?? lead.contactPerson ?? '',
@@ -814,6 +873,7 @@ export async function listBoard(query, actor) {
   if (query.department && isValidId(query.department)) {
     filter.department = new mongoose.Types.ObjectId(query.department);
   }
+  if (query.property) filter.property = query.property;
 
   const enquiries = await Enquiry.find(filter)
     .sort({ updatedAt: -1 })
@@ -923,7 +983,7 @@ function printSnapshot(enquiry) {
     })),
     room: plain.room,
     advance: plain.advance,
-    ...pick(plain, ['contactName', 'contactEmail', 'contactPhone', 'billingName', 'gstNumber', 'panNumber', 'paymentTerms', 'createdByName']),
+    ...pick(plain, ['property', 'contactName', 'contactEmail', 'contactPhone', 'billingName', 'gstNumber', 'panNumber', 'paymentTerms', 'createdByName']),
     proposal: pick(plain.proposal || {}, ['number', 'version', 'revision', 'generatedAt']),
     contract: pick(plain.contract || {}, ['number', 'version', 'generatedAt']),
     proforma: pick(plain.proforma || {}, ['number', 'version', 'generatedAt']),
@@ -936,7 +996,7 @@ async function documentPrint(enquiry, lead, actor) {
     ...printSnapshot(enquiry),
     lead: { businessName: lead.businessName, mobile: lead.mobile, email: lead.email, contactPerson: lead.contactPerson, address: lead.address, city: lead.city },
     preparedBy: preparedBy(actor, enquiry),
-    sessionTimings: await sessionTimingLines(),
+    sessionTimings: await sessionTimingLines(enquiry.property),
   }));
 }
 
@@ -1003,6 +1063,9 @@ function describeChanges(before, after) {
     const diffs = ROOM_FIELDS.filter(([field]) => !sameText(r0[field], r1[field])).map(
       ([field, name, show]) => `${name} ${show(r0[field]) || '—'} → ${show(r1[field]) || '—'}`
     );
+    if (roomTypesLine(r0) !== roomTypesLine(r1)) {
+      diffs.push(`categories ${roomTypesLine(r0) || '—'} → ${roomTypesLine(r1) || '—'}`);
+    }
     if (diffs.length) lines.push(`Rooms: ${diffs.join(', ')}`);
   }
   for (const [field, name] of Object.entries(PRINTED_FIELDS)) {
@@ -1032,7 +1095,7 @@ async function upsertPendingAddendum(enquiry, current) {
     addendum.effectiveDate = addendum.effectiveDate || addendum.generatedAt;
   } else {
     enquiry.addendums.push({
-      number: await nextAddendumNumber(),
+      number: await nextAddendumNumber(enquiry),
       generatedAt: new Date(),
       effectiveDate: new Date(),
       before: enquiry.agreed,
@@ -1175,6 +1238,27 @@ export async function updateEnquiry(enquiryId, body, actor, req) {
       );
     }
   }
+  // The property can change only before any document carries its numbers,
+  // and then every function and room category has to fit the new property.
+  const propertyChanged = Boolean(body.property && body.property !== (enquiry.property || 'HCP'));
+  if (propertyChanged) {
+    if (enquiry.proposal?.number || enquiry.contract?.number || enquiry.proforma?.number) {
+      throw new AppError(
+        `The documents already carry ${enquiry.property || 'HCP'} numbers — the property can no longer change`,
+        409,
+        'PROPERTY_LOCKED'
+      );
+    }
+    if (enquiry.kind !== 'room' && !body.functions) {
+      throw new AppError(`Pick ${body.property}'s venues and menus for every function`, 422, 'PROPERTY_FUNCTIONS');
+    }
+    enquiry.property = body.property;
+  }
+  const property = await getProperty(enquiry.property || 'HCP');
+  if (body.room !== undefined || (propertyChanged && enquiry.kind !== 'banquet')) {
+    const room = body.room ?? (enquiry.room?.toObject ? enquiry.room.toObject() : enquiry.room);
+    body.room = normaliseRoomRequest(enquiry.kind, room, property);
+  }
   let freedSlots = null;
   if (body.functions) {
     if (enquiry.kind !== 'room' && body.functions.length === 0) {
@@ -1182,13 +1266,13 @@ export async function updateEnquiry(enquiryId, body, actor, req) {
     }
     normaliseFunctionVenues(body.functions);
     assertFutureDates(body.functions);
-    await assertRefsExist(body.functions);
+    await assertRefsExist(body.functions, property.code);
     assertNoDuplicateSlots(body.functions);
-    const priced = await priceFunctions(body.functions);
+    const priced = await priceFunctions(body.functions, property.code);
     freedSlots = enquiry.functions.map((fn) => fn.toObject ? fn.toObject() : fn);
     enquiry.functions = priced;
     // The slot may now be free, or newly taken.
-    const holder = await findSlotHolder(priced, enquiry._id);
+    const holder = await findSlotHolder(priced, enquiry._id, { property: property.code });
     if (holder) enterWaitlist(enquiry, holder, actor);
     else if (enquiry.stage === 'waitlist') leaveWaitlist(enquiry, actor, 'Moved to a free slot — back on track');
     // Keep the headline figure in step unless the team typed their own.
@@ -1282,41 +1366,58 @@ async function nextDocumentNumber(field, pattern) {
   return max + 1;
 }
 
-/** Proposal references run HCP.EP.000001.00, HCP.EP.000002.00, … */
+/** The name the client emails sign with: the property's short name ("Hotel Centre Point"). */
+async function hotelName(enquiry) {
+  const property = await getProperty(enquiry?.property || 'HCP');
+  return property.shortName || property.name || property.code;
+}
+
+// Each property numbers its own documents under its code: HCP.EP…, CPA.EP…, CPNM.EP…
+function prefixOf(enquiry) {
+  return enquiry?.property || 'HCP';
+}
+
+/** Proposal references run HCP.EP.000001.00, HCP.EP.000002.00, … per property. */
 async function ensureProposalNumber(enquiry) {
   if (enquiry.proposal?.number) return;
-  const n = await nextDocumentNumber('proposal', /^HCP\.EP\.S?(\d+)/);
-  enquiry.proposal.number = `HCP.EP.${String(Math.max(n, PROPOSAL_NUMBER_START)).padStart(6, '0')}.00`;
+  const p = prefixOf(enquiry);
+  const n = await nextDocumentNumber('proposal', new RegExp(`^${p}\\.EP\\.S?(\\d+)`));
+  enquiry.proposal.number = `${p}.EP.${String(Math.max(n, PROPOSAL_NUMBER_START)).padStart(6, '0')}.00`;
 }
 
-/** Contract references run HCP.EC.00001, HCP.EC.00002, … */
+/** Contract references run HCP.EC.00001, HCP.EC.00002, … per property. */
 async function ensureContractNumber(enquiry) {
   if (enquiry.contract?.number) return;
-  const n = await nextDocumentNumber('contract', /^HCP\.EC\.(\d+)/);
-  enquiry.contract.number = `HCP.EC.${String(Math.max(n, CONTRACT_NUMBER_START)).padStart(5, '0')}`;
+  const p = prefixOf(enquiry);
+  const n = await nextDocumentNumber('contract', new RegExp(`^${p}\\.EC\\.(\\d+)`));
+  enquiry.contract.number = `${p}.EC.${String(Math.max(n, CONTRACT_NUMBER_START)).padStart(5, '0')}`;
 }
 
-/** Pro-forma invoices run HCP.PI.00001, HCP.PI.00002, … */
+/** Pro-forma invoices run HCP.PI.00001, HCP.PI.00002, … per property (HCP also counts the old PI-1001 form). */
 async function ensureProformaNumber(enquiry) {
   if (enquiry.proforma?.number) return;
-  const n = await nextDocumentNumber('proforma', /^(?:HCP\.PI\.|PI-)(\d+)/);
-  enquiry.proforma.number = `HCP.PI.${String(Math.max(n, PROFORMA_NUMBER_START)).padStart(5, '0')}`;
+  const p = prefixOf(enquiry);
+  const legacy = p === 'HCP' ? '|PI-' : '';
+  const n = await nextDocumentNumber('proforma', new RegExp(`^(?:${p}\\.PI\\.${legacy})(\\d+)`));
+  enquiry.proforma.number = `${p}.PI.${String(Math.max(n, PROFORMA_NUMBER_START)).padStart(5, '0')}`;
 }
 
-/** Addendums run HCP.AD.00001.00, HCP.AD.00002.00, … across every enquiry. */
-async function nextAddendumNumber() {
+/** Addendums run HCP.AD.00001.00, HCP.AD.00002.00, … across the property's enquiries. */
+async function nextAddendumNumber(enquiry) {
+  const p = prefixOf(enquiry);
+  const pattern = new RegExp(`^${p}\\.AD\\.(\\d+)`);
   const docs = await Enquiry.find({ 'addendums.number': { $nin: ['', null] } })
     .select('addendums.number')
     .lean();
   let max = 0;
   for (const doc of docs) {
     for (const addendum of doc.addendums || []) {
-      const m = String(addendum?.number || '').match(/^HCP\.AD\.(\d+)/);
+      const m = String(addendum?.number || '').match(pattern);
       const n = m ? parseInt(m[1], 10) : NaN;
       if (Number.isFinite(n) && n > max) max = n;
     }
   }
-  return `HCP.AD.${String(Math.max(max + 1, ADDENDUM_NUMBER_START)).padStart(5, '0')}.00`;
+  return `${p}.AD.${String(Math.max(max + 1, ADDENDUM_NUMBER_START)).padStart(5, '0')}.00`;
 }
 
 function preparedBy(actor, enquiry) {
@@ -1399,7 +1500,7 @@ function requireBanquet(enquiry, what) {
 export async function getMessages(enquiryId, kind, actor) {
   const { enquiry, lead } = await loadEnquiryScoped(enquiryId, actor);
   if (!MESSAGE_KINDS.includes(kind)) throw new AppError('Unknown message kind', 404, 'NOT_FOUND');
-  return messagesFor(kind, { enquiry, lead, senderName: actorName(actor) });
+  return messagesFor(kind, { enquiry, lead, senderName: actorName(actor), hotel: await hotelName(enquiry) });
 }
 
 /* ----------------------------- Proposal stage ----------------------------- */
@@ -1457,7 +1558,7 @@ export async function emailProposal(enquiryId, payload, actor, req) {
   enquiry.proposal.generatedAt = enquiry.proposal.generatedAt || new Date();
   const pdf = await buildIssuedPdf(enquiry, lead, actor, 'proposal');
 
-  const standard = messagesFor('proposal', { enquiry, lead, senderName: sender.senderName });
+  const standard = messagesFor('proposal', { enquiry, lead, senderName: sender.senderName, hotel: await hotelName(enquiry) });
   const subject = payload.subject || standard.subject;
   const text = payload.message || standard.email;
 
@@ -1607,7 +1708,7 @@ export async function emailContract(enquiryId, payload, actor, req) {
   const { token, tokenHash, expiresAt } = newSignToken();
   const signUrl = `${env.CLIENT_ORIGIN.replace(/\/$/, '')}/sign/${token}`;
 
-  const standard = messagesFor('contract', { enquiry, lead, senderName: sender.senderName });
+  const standard = messagesFor('contract', { enquiry, lead, senderName: sender.senderName, hotel: await hotelName(enquiry) });
   const subject = payload.subject || standard.subject;
   const text =
     (payload.message || standard.email) +
@@ -1771,7 +1872,7 @@ export async function emailAddendum(enquiryId, payload, actor, req) {
   const { token, tokenHash, expiresAt } = newSignToken();
   const signUrl = `${env.CLIENT_ORIGIN.replace(/\/$/, '')}/sign/${token}`;
 
-  const standard = messagesFor('addendum', { enquiry, lead, senderName: sender.senderName });
+  const standard = messagesFor('addendum', { enquiry, lead, senderName: sender.senderName, hotel: await hotelName(enquiry) });
   const subject = payload.subject || standard.subject;
   const text =
     (payload.message || standard.email) +
@@ -2117,7 +2218,7 @@ export async function markWon(enquiryId, payload, actor, req) {
   }
 
   // A Won booking locks its slots — make sure nothing else got confirmed first.
-  const confirmed = await findSlotHolder(enquiry.functions, enquiry._id, { wonOnly: true });
+  const confirmed = await findSlotHolder(enquiry.functions, enquiry._id, { wonOnly: true, property: enquiry.property });
   if (confirmed) {
     throw new AppError(
       `Slot already confirmed for ${confirmed.name} on ${confirmed.label}. A Won booking locks the date, venue and session.`,
@@ -2342,6 +2443,7 @@ export async function calendarFeed(query) {
   to.setHours(23, 59, 59, 999);
 
   const enquiries = await Enquiry.find({
+    property: query.property || 'HCP',
     stage: { $nin: ['lost', 'cancelled'] },
     'functions.date': { $gte: from, $lte: to },
   })
@@ -2377,6 +2479,47 @@ export async function calendarFeed(query) {
   return { functions };
 }
 
+/**
+ * Rooms held on a property night by night: every live enquiry whose stay
+ * overlaps the period (a night is held from check-in up to the night before
+ * check-out), with the property's room count to measure them against.
+ * Unscoped like the banquet calendar — availability needs every hold.
+ */
+export async function roomCalendarFeed(query) {
+  const property = await getProperty(query.property || 'CPA');
+  const enquiries = await Enquiry.find({
+    property: property.code,
+    kind: { $in: ['room', 'both'] },
+    stage: { $nin: ['lost', 'cancelled'] },
+    'room.checkIn': { $lte: query.to },
+    'room.checkOut': { $gt: query.from },
+  })
+    .select('lead department stage room')
+    .populate('lead', 'businessName departments');
+  const holds = enquiries
+    .map((enquiry) => ({
+      enquiryId: enquiry._id,
+      leadId: enquiry.lead?._id,
+      leadName: enquiry.lead?.businessName || '—',
+      department: departmentLabel(enquiry.lead, enquiry.department),
+      stage: enquiry.stage,
+      checkIn: enquiry.room?.checkIn,
+      checkOut: enquiry.room?.checkOut,
+      // Rooms per category; each night of the stay holds all of them.
+      types: (enquiry.room?.types || []).map((t) => ({ type: t.type, name: t.name, count: t.count })),
+      rooms: parseInt(enquiry.room?.rooms, 10) || 0,
+      notes: enquiry.room?.notes || '',
+    }))
+    .filter((h) => h.types.length && h.checkIn && h.checkOut)
+    .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.leadName.localeCompare(b.leadName));
+  return {
+    property: property.code,
+    roomTypes: (property.roomTypes || []).map((t) => ({ _id: t._id, name: t.name, count: t.count })),
+    totalRooms: totalRooms(property),
+    holds,
+  };
+}
+
 export default {
   createEnquiry,
   listEnquiriesForLead,
@@ -2409,4 +2552,5 @@ export default {
   getProformaPdf,
   getCreditFormPdf,
   calendarFeed,
+  roomCalendarFeed,
 };

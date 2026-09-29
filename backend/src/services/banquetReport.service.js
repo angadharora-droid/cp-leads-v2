@@ -193,6 +193,7 @@ function enquiryRow(enquiry, fns) {
   const { first, last } = eventDates(fns);
   return {
     id: String(enquiry._id),
+    property: enquiry.property || 'HCP',
     reference: enquiry.lead?.reference || '',
     businessName: enquiry.lead?.businessName || '—',
     department: departmentLabel(enquiry.lead, enquiry.department),
@@ -512,10 +513,14 @@ export async function getBanquetReport(actor, filters = {}) {
 
 /** Filter options for the report page (venues, sessions, executives). */
 export async function getBanquetReportOptions(actor) {
-  const [venues, sessions] = await Promise.all([
-    Venue.find().sort({ order: 1, name: 1 }).select('name active').lean(),
-    BanquetSession.find().sort({ order: 1, name: 1 }).select('name').lean(),
+  const [venueDocs, sessionDocs] = await Promise.all([
+    Venue.find().sort({ property: 1, order: 1, name: 1 }).select('name active property').lean(),
+    BanquetSession.find().sort({ property: 1, order: 1, name: 1 }).select('name property').lean(),
   ]);
+  // The report covers every property, so each option says whose it is.
+  const tagged = (list) => list.map((item) => ({ ...item, name: `${item.property || 'HCP'} · ${item.name}` }));
+  const venues = tagged(venueDocs);
+  const sessions = tagged(sessionDocs);
   let executives = [];
   if (isAdmin(actor)) {
     const ids = await Lead.distinct('assignedTo', { assignedTo: { $ne: null } });
@@ -734,6 +739,7 @@ export async function generateBanquetExcel(actor, filters = {}) {
   data.byStage.forEach((r) => summary.addRow({ measure: `${r.label} — count / value`, value: `${r.count} / ${r.value}` }));
 
   const enq = addSheet(workbook, 'Enquiries', [
+    { header: 'Property', key: 'property', width: 10 },
     { header: 'Lead Ref', key: 'reference', width: 20 },
     { header: 'Company / Guest', key: 'businessName', width: 30 },
     { header: 'Department', key: 'department', width: 20 },

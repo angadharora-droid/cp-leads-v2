@@ -150,7 +150,7 @@ function DemandDatesCard({ settings, onSaved }) {
       const demandDates = [...rows]
         .sort((a, b) => a.from.localeCompare(b.from))
         .map((r) => ({ from: r.from, to: r.to, level: r.level, note: r.note.trim() }));
-      await api.put('/banquet/settings', { demandDates });
+      await api.put('/banquet/settings', { property: settings?.property, demandDates });
       toast.success('Demand dates saved');
       onSaved?.();
     } catch (err) {

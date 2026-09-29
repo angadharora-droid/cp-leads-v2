@@ -107,8 +107,8 @@ function idList(value) {
  * Venues (rows), sessions (columns), dates and every hold placed in its
  * cell. `venues` / `stages` are comma lists; left out, nothing is filtered.
  */
-async function buildGrid({ from, to, venues, stages }) {
-  const [{ functions }, config] = await Promise.all([calendarFeed({ from, to }), getConfig()]);
+async function buildGrid({ from, to, venues, stages, property = 'HCP' }) {
+  const [{ functions }, config] = await Promise.all([calendarFeed({ from, to, property }), getConfig(property)]);
   const venueSet = idList(venues);
   const stageSet = idList(stages);
 
@@ -162,6 +162,8 @@ async function buildGrid({ from, to, venues, stages }) {
   return {
     from,
     to,
+    property,
+    propertyName: config.propertyInfo?.name || '',
     days,
     rows,
     columns,
@@ -177,6 +179,11 @@ function periodLabel(grid) {
   return grid.days.length === 1 ? longDay(grid.days[0].date) : dateRangeLabel(grid.from, grid.to);
 }
 
+/** "HCP — Hotel Centre Point Nagpur", or the code alone until a name is set. */
+function propertyTitle(grid) {
+  return grid.propertyName ? `${grid.property} — ${grid.propertyName}` : grid.property;
+}
+
 /** "4 venues · Provisional, Won" when the page was filtered, else ''. */
 function filterNote(grid) {
   if (!grid.filtered) return '';
@@ -190,7 +197,9 @@ function filterNote(grid) {
 }
 
 function fileStem(grid) {
-  return grid.days.length === 1 ? `Banquet Calendar ${grid.from}` : `Banquet Calendar ${grid.from} to ${grid.to}`;
+  return grid.days.length === 1
+    ? `Banquet Calendar ${grid.property} ${grid.from}`
+    : `Banquet Calendar ${grid.property} ${grid.from} to ${grid.to}`;
 }
 
 /* ---------------------------------- Excel --------------------------------- */
@@ -238,7 +247,7 @@ export async function calendarExcel(query) {
   // Title
   sheet.mergeCells(1, 1, 1, lastCol);
   const title = sheet.getCell(1, 1);
-  title.value = `Banquet Calendar · ${periodLabel(grid)}`;
+  title.value = `Banquet Calendar · ${propertyTitle(grid)} · ${periodLabel(grid)}`;
   title.font = { bold: true, size: 13, color: { argb: argb(SHEET.maroon) } };
   title.alignment = { horizontal: 'center', vertical: 'middle' };
   sheet.getRow(1).height = 24;
@@ -607,7 +616,7 @@ export async function calendarPdf(query) {
   const note = filterNote(grid);
   const doc = sheetDocument({
     title: 'BANQUET CALENDAR',
-    subtitle: periodLabel(grid),
+    subtitle: `${propertyTitle(grid)}  ·  ${periodLabel(grid)}`,
     landscape: true,
     content,
     footer: { left: `Printed ${stampLabel(new Date())}`, centre: note ? `Filtered: ${note}` : '' },

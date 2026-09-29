@@ -68,7 +68,7 @@ function StageTatCard({ settings, onSaved }) {
     <Card>
       <CardHead
         icon={Hourglass}
-        title="Turnaround time per stage"
+        title="Turnaround time per stage — all properties"
         description="How many days an enquiry may stay in each stage. Past that it is flagged Over TAT on the board, the enquiry page and the management reports."
       />
       <CardContent className="space-y-4">
@@ -147,7 +147,7 @@ function PaymentScheduleCard({ settings, onSaved }) {
     <Card>
       <CardHead
         icon={Wallet}
-        title="Standard payment schedule"
+        title="Standard payment schedule — all properties"
         description="Laid onto every booking when its contract is emailed, as shares of the booking value (menu revenue + GST). Each booking's schedule can then be edited on its own page."
       />
       <CardContent className="space-y-3">

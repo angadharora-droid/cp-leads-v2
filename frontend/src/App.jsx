@@ -23,6 +23,7 @@ import EnquiryPage from '@/pages/EnquiryPage';
 import ArcsBoardPage from '@/pages/ArcsBoardPage';
 import ArcPage from '@/pages/ArcPage';
 import BanquetCalendarPage from '@/pages/BanquetCalendarPage';
+import RoomCalendarPage from '@/pages/RoomCalendarPage';
 import BanquetSetupPage from '@/pages/BanquetSetupPage';
 import SignProposalPage from '@/pages/SignProposalPage';
 import UsersPage from '@/pages/UsersPage';
@@ -99,6 +100,7 @@ function App() {
               <Route path="/rate-contracts" element={<ArcsBoardPage />} />
               <Route path="/rate-contracts/:arcId" element={<ArcPage />} />
               <Route path="/banquet-calendar" element={<BanquetCalendarPage />} />
+              <Route path="/room-calendar" element={<RoomCalendarPage />} />
               <Route path="/reports" element={<ReportsPage />} />
 
               {/* Admin-only */}

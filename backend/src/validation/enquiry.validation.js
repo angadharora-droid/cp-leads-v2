@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import { PROPERTY_CODES } from '../models/Property.js';
+
+/** The hotel an enquiry, calendar or setup call is about. */
+const propertyCode = z.enum(PROPERTY_CODES);
+
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 
 const money = z.coerce.number().min(0).max(1000000000);
@@ -55,10 +60,18 @@ const roomSchema = z.object({
   checkIn: z.string().trim().max(50).optional().default(''),
   checkOut: z.string().trim().max(50).optional().default(''),
   rooms: z.string().trim().max(50).optional().default(''),
+  // Rooms per category of the property; the service fills names and the total.
+  types: z
+    .array(z.object({ type: objectId, count: z.coerce.number().int().min(0).max(10000) }))
+    .max(20)
+    .optional()
+    .default([]),
   notes: z.string().trim().max(2000).optional().default(''),
 });
 
 export const createEnquirySchema = z.object({
+  // HCP, CPA or CPNM — picked first on every new enquiry.
+  property: propertyCode,
   // Branch/department node of the company lead (required for companies).
   department: objectId.optional(),
   kind: z.enum(['banquet', 'room', 'both']).optional().default('banquet'),
@@ -76,6 +89,8 @@ export const createEnquirySchema = z.object({
 });
 
 export const updateEnquirySchema = z.object({
+  // Only while no document has been numbered for the enquiry.
+  property: propertyCode.optional(),
   department: objectId.optional(),
   contactName: z.string().trim().max(200).optional(),
   contactEmail: z.string().trim().email().max(320).optional().or(z.literal('')),
@@ -97,6 +112,7 @@ export const boardQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   lead: objectId.optional(),
   department: objectId.optional(),
+  property: propertyCode.optional(),
 });
 
 /** Shared by the proposal, contract and pro-forma send dialogs. */
@@ -165,6 +181,12 @@ export const cancelSchema = z.object({
 export const calendarQuerySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+  property: propertyCode.optional().default('HCP'),
+});
+
+/** Banquet Setup for one property. */
+export const configQuerySchema = z.object({
+  property: propertyCode.optional().default('HCP'),
 });
 
 /** Longest period the calendar grid, its Excel and its print cover. */

@@ -16,17 +16,20 @@ import {
   catalogSchema,
   catalogUpdateSchema,
 } from '../validation/banquetConfig.validation.js';
-import { calendarQuerySchema, calendarSheetQuerySchema } from '../validation/enquiry.validation.js';
+import { calendarQuerySchema, calendarSheetQuerySchema, configQuerySchema } from '../validation/enquiry.validation.js';
 
 const router = Router();
 
 router.use(authenticate);
 
-// Venues + sessions + slot rule in one call (used by forms and the calendar).
-router.get('/config', configController.getConfig);
+// One property's venues + sessions + menus + slot rule in one call (used by forms and the calendar).
+router.get('/config', validate(configQuerySchema, 'query'), configController.getConfig);
 
 // Availability calendar feed — visible to every signed-in user.
 router.get('/calendar', validate(calendarQuerySchema, 'query'), enquiryController.calendar);
+
+// Rooms held night by night on a property with rooms (CPA for now).
+router.get('/room-calendar', validate(calendarQuerySchema, 'query'), enquiryController.roomCalendar);
 
 // The same grid as an Excel workbook, and as a landscape PDF to print.
 router.get('/calendar/export', validate(calendarSheetQuerySchema, 'query'), enquiryController.calendarExport);

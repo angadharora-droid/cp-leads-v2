@@ -1,5 +1,7 @@
 import { renderToBuffer } from './pdf.service.js';
 import { CP_HEADER_LOGO, CP_HR_LOGO } from './pdfAssets.js';
+import { roomTypesLine } from '../utils/rooms.js';
+import { assertPrintable, getProperty } from './property.service.js';
 
 /*
  * Banquet documents, page for page after the house "Final Formats"
@@ -343,7 +345,8 @@ export async function buildSignedDocumentPdf(enquiry, lead, signature, options =
     typedName: signature.signatureType === 'typed' ? signature.signerName : '',
   };
   const images = drawn ? { signatureImg: signature.signatureDataUrl } : {};
-  const content = addendumContent(enquiry, lead, options.addendum, { preparedBy, clientSignature });
+  const property = await getProperty(enquiry.property || 'HCP');
+  const content = addendumContent(enquiry, lead, options.addendum, { preparedBy, clientSignature, property });
   return {
     buffer: await renderToBuffer(docDefinition(content, { ...addendumMeta(options.addendum), images })),
     filename: `Signed Addendum ${safeName(options.addendum?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
@@ -352,8 +355,6 @@ export async function buildSignedDocumentPdf(enquiry, lead, signature, options =
 }
 
 /* --------------------------------- Addendum -------------------------------- */
-
-const HOTEL_OFFICE = '24, CB Road, Ramdaspeth, Nagpur';
 
 /** One agreed function on a line, the way the Old Menu / New Menu table reads it. */
 function agreedLine(fn) {
@@ -378,7 +379,7 @@ function agreedRoomLine(room) {
   return [
     room.checkIn ? `Check in ${ddmmyyyy(room.checkIn)}` : '',
     room.checkOut ? `Check out ${ddmmyyyy(room.checkOut)}` : '',
-    room.rooms ? `${room.rooms} rooms` : '',
+    roomTypesLine(room) || (room.rooms ? `${room.rooms} rooms` : ''),
     room.notes,
   ]
     .filter(Boolean)
@@ -441,7 +442,7 @@ function addendumMeta(addendum) {
  * reference to the contract, the amended room and event tables, the Old
  * Menu / New Menu comparison, remaining terms, effective date, signatures.
  */
-function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature } = {}) {
+function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature, property } = {}) {
   const client = lead?.businessName || enquiry.contactName || 'Client';
   const address = lead?.registeredAddress || lead?.address || lead?.city || '';
   const madeOn = ddmmyyyy(addendum?.generatedAt || new Date());
@@ -457,24 +458,28 @@ function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature 
 
   const roomWidths = cols([1110, 1099, 1271, 872, 1013, 1121, 1649, 1685]);
   const roomHeaders = ['Check in Date', 'Check out Date', 'Occupancy Type', 'Category', 'Meal plan', 'No. of Rooms', 'Rate', 'Estimated Revenue'];
-  const roomRow = room && (room.checkIn || room.checkOut || room.rooms)
-    ? [
-        centered(ddmmyyyy(room.checkIn), { fontSize: 10 }),
-        centered(ddmmyyyy(room.checkOut), { fontSize: 10 }),
-        centered(''),
-        centered(room.notes || ''),
-        centered(''),
-        centered(room.rooms || ''),
-        centered(''),
-        centered(''),
-      ]
-    : blankCells(8);
+  // One row per room category held; older room blocks have a single row.
+  const roomLine = (category, count) => [
+    centered(ddmmyyyy(room.checkIn), { fontSize: 10 }),
+    centered(ddmmyyyy(room.checkOut), { fontSize: 10 }),
+    centered(''),
+    centered(category),
+    centered(''),
+    centered(count),
+    centered(''),
+    centered(''),
+  ];
+  const roomRows = !(room && (room.checkIn || room.checkOut || room.rooms))
+    ? [blankCells(8)]
+    : room.types?.length
+      ? room.types.map((t) => roomLine(t.name, String(t.count)))
+      : [roomLine(room.notes || '', room.rooms || '')];
   const roomTable = table(
     roomWidths,
     [
       bar('Room Requirement Information', { span: 8 }),
       roomHeaders.map((h) => ({ text: h, color: '#ffffff', fillColor: MAROON, alignment: 'center', fontSize: 10, margin: [0, 6, 0, 6] })),
-      roomRow,
+      ...roomRows,
     ],
     { tableExtra: { heights: (i) => (i === 0 ? ROW : i === 1 ? HEAD : LINE), dontBreakRows: true }, nodeExtra: { margin: [0, 0, 0, 10] } }
   );
@@ -533,7 +538,7 @@ function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature 
   const content = [
     { text: 'ADDENDUM TO AGREEMENT', bold: true, alignment: 'center', margin: [0, 0, 0, 12] },
     para(`This Addendum is made and entered into on this ${madeOn}, by and between:`),
-    para(`Hotel Centre Point, having its registered office at ${HOTEL_OFFICE}, hereinafter referred to as the “Hotel”,`, { bold: true }),
+    para(`${property?.shortName || property?.name || 'Hotel Centre Point'}, having its registered office at ${property?.registeredOffice || property?.address || ''}, hereinafter referred to as the “Hotel”,`, { bold: true }),
     para('AND'),
     para(`${client}${address ? `, having its registered office at ${address}` : ''}, hereinafter referred to as the “Client”.`, { bold: true }),
 
@@ -571,7 +576,9 @@ function addendumContent(enquiry, lead, addendum, { preparedBy, clientSignature 
  */
 export async function buildAddendumPdf(enquiry, lead, addendum, options = {}) {
   const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
-  const content = addendumContent(enquiry, lead, addendum, { preparedBy });
+  const property = await getProperty(enquiry.property || 'HCP');
+  assertPrintable(property);
+  const content = addendumContent(enquiry, lead, addendum, { preparedBy, property });
   return {
     buffer: await renderToBuffer(docDefinition(content, addendumMeta(addendum))),
     filename: `Addendum ${safeName(addendum?.number, '')} - ${safeName(lead?.businessName, 'Guest')}.pdf`.replace('  ', ' '),
@@ -627,8 +634,35 @@ function pfiLine(text = '') {
  * guest and reservation particulars in two columns, the charge lines with
  * Amount / Advance / Balance, totals, amount in words and the sign-off.
  */
+/**
+ * The pro-forma's letterhead lines for the property, in the template's own
+ * punctuation — for HCP: "HOTEL CENTRE POINT NAGPUR (A unit of hotel Amarjit
+ * PVT LTD) 24, central Bazar road, …", "Ph : … Email : …" and
+ * "VAT TIN:… CIN:… PAN: … GSTIN : … FSSAI NO : …".
+ */
+function invoiceLines(property) {
+  const p = property || {};
+  return {
+    address: [
+      String(p.name || '').toUpperCase(),
+      p.unitOf ? `(A unit of ${p.unitOf})` : '',
+      p.address || '',
+    ].filter(Boolean).join(' '),
+    contact: [p.phone ? `Ph : ${p.phone}` : '', p.email ? `Email : ${p.email}` : ''].filter(Boolean).join(' '),
+    tax: [
+      p.vatTin ? `VAT TIN:${p.vatTin}` : '',
+      p.cin ? `CIN:${p.cin}` : '',
+      p.pan ? `PAN: ${p.pan}` : '',
+      p.gstin ? `GSTIN : ${p.gstin}` : '',
+      p.fssai ? `FSSAI NO : ${p.fssai}` : '',
+    ].filter(Boolean).join(' '),
+  };
+}
+
 export async function buildProformaPdf(enquiry, lead, options = {}) {
   const preparedBy = options.preparedBy || { name: enquiry.createdByName || '' };
+  const property = await getProperty(enquiry.property || 'HCP');
+  assertPrintable(property);
   const fns = sortedFunctions(enquiry);
   const dates = fns.map((f) => f.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
   const total = eventTotal(enquiry);
@@ -700,8 +734,8 @@ export async function buildProformaPdf(enquiry, lead, options = {}) {
     { image: 'hrLogo', width: 151, alignment: 'center', margin: [0, 0, 0, 4] },
     {
       columns: [
-        B('UDYAM NO:UDYAM-MH-20-0004691', { margin: [12, 0, 0, 0] }),
-        { text: [F('GSTN : '), B('27AAACH4474J1ZE')], alignment: 'right' },
+        B(property.udyam ? `UDYAM NO:${property.udyam}` : '', { margin: [12, 0, 0, 0] }),
+        { text: property.gstin ? [F('GSTN : '), B(property.gstin)] : '', alignment: 'right' },
       ],
     },
     { text: `PRO-FORMA INVOICE - Version ${enquiry.proforma?.version || 1}`, bold: true, fontSize: 15, decoration: 'underline', margin: [12, 6, 0, 8] },
@@ -769,10 +803,10 @@ export async function buildProformaPdf(enquiry, lead, options = {}) {
     },
     {
       stack: [
-        F('HOTEL CENTRE POINT NAGPUR (A unit of hotel Amarjit PVT LTD) 24, central Bazar road, Ramdaspeth, Nagpur - 440 010 INDIA', { fontSize: 8, alignment: 'center' }),
-        F('Ph : +91 92669 23456 Email : info.nagpur@cpgh.in', { fontSize: 8, alignment: 'center' }),
+        F(invoiceLines(property).address, { fontSize: 8, alignment: 'center' }),
+        F(invoiceLines(property).contact, { fontSize: 8, alignment: 'center' }),
         F('Page 1 of 1', { alignment: 'right', margin: [0, 3, 12, 0] }),
-        B('VAT TIN:27550004350V CIN:U55200MH1986PTC041369 PAN: AAACH4474J GSTIN : 27AAACH4474J1ZE FSSAI NO : 11514055000224', { fontSize: 8, alignment: 'center' }),
+        B(invoiceLines(property).tax, { fontSize: 8, alignment: 'center' }),
       ],
       margin: [0, 40, 0, 0],
     },

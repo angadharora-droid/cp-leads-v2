@@ -45,6 +45,8 @@ import PageHeader from '@/components/PageHeader';
 import StageBadge from '@/components/enquiries/StageBadge';
 import CalendarGrid from '@/components/banquet/CalendarGrid';
 import LeadPickerDialog from '@/components/leads/LeadPickerDialog';
+import PropertySwitch from '@/components/PropertySwitch';
+import { useRememberedProperty } from '@/lib/properties';
 import EnquiryDialog from '@/components/enquiries/EnquiryDialog';
 import { openBlob, saveBlob } from '@/components/enquiries/EnquiryActions';
 import { Button } from '@/components/ui/button';
@@ -466,7 +468,7 @@ function EventDialog({ ev, onOpenChange }) {
  * one bar above the grid: Today / previous / next, the period (a mini month
  * to jump, or From / To for a range), the view switcher, Print, Excel and
  * New enquiry, then the Venues checklist and the stage chips, which double
- * as the colour legend. A free cell starts a new enquiry for that slot.
+ * as the colour legend.
  */
 export default function BanquetCalendarPage() {
   const { theme } = useTheme();
@@ -474,6 +476,8 @@ export default function BanquetCalendarPage() {
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 1024;
 
   const [view, setView] = useState(() => (isNarrow ? 'day' : 'week'));
+  // Whose venues and bookings are shown: HCP, CPA or CPNM.
+  const [property, setProperty] = useRememberedProperty('cph.calendar.property');
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [customRange, setCustomRange] = useState(() => ({
     from: startOfDay(new Date()),
@@ -488,8 +492,6 @@ export default function BanquetCalendarPage() {
   const [jumpOpen, setJumpOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [enquiryLead, setEnquiryLead] = useState(null);
-  // The free cell a new enquiry was started from: { date, venue, session }.
-  const [slot, setSlot] = useState(null);
   const [busy, setBusy] = useState('');
 
   const range = useMemo(() => visibleRange(view, anchor, customRange), [view, anchor, customRange]);
@@ -498,11 +500,11 @@ export default function BanquetCalendarPage() {
     setIsLoading(true);
     try {
       const [feed, cfg] = await Promise.all([
-        api.get('/banquet/calendar', { params: { from: toKey(range.from), to: toKey(range.to) } }),
-        config ? Promise.resolve(null) : api.get('/banquet/config'),
+        api.get('/banquet/calendar', { params: { from: toKey(range.from), to: toKey(range.to), property } }),
+        config?.property === property ? Promise.resolve(null) : api.get('/banquet/config', { params: { property } }),
       ]);
       setHolds(feed?.data?.data?.functions || []);
-      if (cfg) setConfig(cfg?.data?.data || { venues: [], sessions: [] });
+      if (cfg) setConfig(cfg?.data?.data || { property, venues: [], sessions: [] });
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load the calendar'));
       setHolds([]);
@@ -510,7 +512,7 @@ export default function BanquetCalendarPage() {
       setIsLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from.getTime(), range.to.getTime()]);
+  }, [range.from.getTime(), range.to.getTime(), property]);
 
   useEffect(() => {
     load();
@@ -636,23 +638,22 @@ export default function BanquetCalendarPage() {
     setAnchor(startOfDay(day));
     setView('day');
   };
-  const newAt = ({ date, venue, session }) => {
-    setSlot({ date, venue, session });
-    setPickerOpen(true);
-  };
   const hiddenCount = events.length - filtered.length;
 
   /* ------------------------------ Downloads ----------------------------- */
 
   // The page's period and filters, for the Excel and the print.
   const sheetParams = () => ({
+    property,
     from: toKey(range.from),
     to: toKey(range.to),
     ...(venueOn === null ? {} : { venues: [...venueOn].join(',') }),
     stages: [...stageOn].join(','),
   });
   const sheetName = () =>
-    days.length === 1 ? `Banquet Calendar ${toKey(range.from)}` : `Banquet Calendar ${toKey(range.from)} to ${toKey(range.to)}`;
+    days.length === 1
+      ? `Banquet Calendar ${property} ${toKey(range.from)}`
+      : `Banquet Calendar ${property} ${toKey(range.from)} to ${toKey(range.to)}`;
 
   async function printSheet() {
     setBusy('print');
@@ -682,13 +683,13 @@ export default function BanquetCalendarPage() {
   /* -------------------------------- Body -------------------------------- */
 
   function renderBody() {
-    if (holds === null) return <Skeleton className="h-[32rem] w-full rounded-xl" />;
+    if (holds === null || config?.property !== property) return <Skeleton className="h-[32rem] w-full rounded-xl" />;
     if (!columns.length || !rows.length) {
       return (
         <div className="rounded-xl border border-border/60 bg-card p-6 text-center text-sm text-muted-foreground">
           {!venues.length ? (
             <>
-              No venues yet —{' '}
+              {property} has no venues yet —{' '}
               <Link to="/banquet-setup" className="font-medium text-primary hover:underline">
                 add them in Banquet Setup
               </Link>
@@ -696,7 +697,7 @@ export default function BanquetCalendarPage() {
             </>
           ) : !columns.length ? (
             <>
-              No sessions yet —{' '}
+              {property} has no sessions yet —{' '}
               <Link to="/banquet-setup" className="font-medium text-primary hover:underline">
                 add them in Banquet Setup
               </Link>
@@ -717,7 +718,6 @@ export default function BanquetCalendarPage() {
         countFor={countFor}
         colorsFor={colorsFor}
         onOpenHold={setOpenEvent}
-        onNewAt={newAt}
         onOpenDay={openDay}
       />
     );
@@ -847,13 +847,7 @@ export default function BanquetCalendarPage() {
               <span className="hidden sm:inline">{busy === 'excel' ? 'Preparing…' : 'Excel'}</span>
               <span className="sr-only sm:hidden">Excel</span>
             </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                setSlot(null);
-                setPickerOpen(true);
-              }}
-            >
+            <Button size="sm" onClick={() => setPickerOpen(true)}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">New enquiry</span>
               <span className="sr-only sm:hidden">New enquiry</span>
@@ -863,6 +857,15 @@ export default function BanquetCalendarPage() {
 
         {/* Row 2: what to show — venues + stage legend */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 px-2 py-2 sm:px-3">
+          <PropertySwitch
+            value={property}
+            onChange={(next) => {
+              // Another hotel has other venues: start from all of them.
+              setVenueOn(null);
+              setHolds(null);
+              setProperty(next);
+            }}
+          />
           <VenuePicker
             venues={venues}
             checked={venueChecked}
@@ -889,48 +892,25 @@ export default function BanquetCalendarPage() {
 
       <LeadPickerDialog
         open={pickerOpen}
-        onOpenChange={(open) => {
-          setPickerOpen(open);
-          if (!open && !enquiryLead) setSlot(null);
-        }}
+        onOpenChange={setPickerOpen}
         title="New enquiry — pick the lead"
-        description={
-          slot
-            ? `For ${slot.venue.name} · ${slot.session.name} · ${format(slot.date, 'EEE d MMM yyyy')}. Every enquiry belongs to a lead; if it is not listed yet, create the lead first.`
-            : 'Every enquiry belongs to a lead. Search below; if it is not listed yet, create the lead first.'
-        }
+        description="Every enquiry belongs to a lead. Search below; if it is not listed yet, create the lead first."
         onPick={(lead) => {
-          setEnquiryLead(lead);
           setPickerOpen(false);
+          setEnquiryLead(lead);
         }}
       />
       {enquiryLead ? (
         <EnquiryDialog
           open
-          onOpenChange={(open) => {
-            if (!open) {
-              setEnquiryLead(null);
-              setSlot(null);
-            }
-          }}
+          onOpenChange={(open) => !open && setEnquiryLead(null)}
           lead={enquiryLead}
           enquiry={null}
           config={config || { venues: [], sessions: [] }}
-          prefill={
-            slot
-              ? {
-                  function: {
-                    date: toKey(slot.date),
-                    venue: String(slot.venue._id),
-                    sessions: [String(slot.session._id)],
-                  },
-                }
-              : null
-          }
+          prefill={{ property }}
           onLeadUpdated={(next) => next && setEnquiryLead(next)}
           onSaved={() => {
             setEnquiryLead(null);
-            setSlot(null);
             load();
           }}
         />

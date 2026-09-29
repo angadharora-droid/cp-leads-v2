@@ -5,6 +5,7 @@
  * left exactly as written in the templates.
  */
 
+// HCP's name in the templates; every other property signs with its own short name.
 const HOTEL = 'Hotel Centre Point';
 
 /** "Dear Mr./Ms. <Last Name>," — the templates address the client by surname. */
@@ -17,8 +18,8 @@ export function salutation(contactName) {
   return `Dear Mr./Ms. ${parts[parts.length - 1]},`;
 }
 
-function signOff(senderName, closing = 'Warm regards,') {
-  return `${closing}\n${senderName ? `${senderName}\n` : ''}${HOTEL}`;
+function signOff(senderName, closing = 'Warm regards,', hotel = HOTEL) {
+  return `${closing}\n${senderName ? `${senderName}\n` : ''}${hotel}`;
 }
 
 function eventType(enquiry) {
@@ -31,25 +32,25 @@ function eventType(enquiry) {
 /* --------------------------------- Email ---------------------------------- */
 
 // HCP.M.EP
-export function proposalEmail({ enquiry, senderName }) {
+export function proposalEmail({ enquiry, senderName, hotel = HOTEL }) {
   return [
     salutation(enquiry.contactName),
     '',
     'Greetings from Centre Point Hospitality!',
     '',
-    `We appreciate your trust in Hotel Centre Point and look forward to providing you with a memorable experience. Please find attached the proposal for your upcoming ${eventType(enquiry)}. The document has been carefully prepared based on the requirements shared with us and outlines the proposed arrangements, along with the relevant facilities, inclusions, and commercial terms.`,
+    `We appreciate your trust in ${hotel} and look forward to providing you with a memorable experience. Please find attached the proposal for your upcoming ${eventType(enquiry)}. The document has been carefully prepared based on the requirements shared with us and outlines the proposed arrangements, along with the relevant facilities, inclusions, and commercial terms.`,
     '',
     'Kindly review the proposal at your convenience and feel free to reach out should you require any clarification or further customization. We would be pleased to tailor the arrangements to best suit your requirements.',
     '',
     'We sincerely value the opportunity to host you and your esteemed guests and look forward to your favorable response.',
     '',
-    signOff(senderName),
+    signOff(senderName, undefined, hotel),
   ].join('\n');
 }
 
 // HCP.M.EC — the pro-forma invoice goes out in the same email, so one line
 // (in the wording of HCP.M.PFI) says so.
-export function contractEmail({ enquiry, senderName }) {
+export function contractEmail({ enquiry, senderName, hotel = HOTEL }) {
   const pfi = enquiry.proforma?.number ? `Pro-Forma Invoice ${enquiry.proforma.number}` : 'Pro-Forma Invoice';
   return [
     salutation(enquiry.contactName),
@@ -64,29 +65,29 @@ export function contractEmail({ enquiry, senderName }) {
     '',
     'Should you require any clarification, please feel free to reach out.',
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
 // HCP.M.PFI
-export function proformaEmail({ enquiry, senderName }) {
+export function proformaEmail({ enquiry, senderName, hotel = HOTEL }) {
   return [
     salutation(enquiry.contactName),
     '',
     'Greetings from Centre Point Hospitality!',
     '',
-    'We thank you for choosing Hotel Centre Point. Further to our discussion, please find attached the Pro-Forma Invoice for your reference. The document outlines the applicable charges and reservation details as discussed, including the estimated billing for the proposed stay / event along with the applicable taxes and payment terms.',
+    `We thank you for choosing ${hotel}. Further to our discussion, please find attached the Pro-Forma Invoice for your reference. The document outlines the applicable charges and reservation details as discussed, including the estimated billing for the proposed stay / event along with the applicable taxes and payment terms.`,
     '',
     'Kindly review the invoice and note that the same has been issued for your reference and for processing the advance payment towards confirmation of the reservation. Upon receipt of the advance payment, the booking will be confirmed accordingly.',
     '',
     'Should you require any clarification or further assistance, please feel free to contact us.',
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
 // Addendum to the agreement (no house template — written in the same voice).
-export function addendumEmail({ enquiry, senderName }) {
+export function addendumEmail({ enquiry, senderName, hotel = HOTEL }) {
   const addendum = latestAddendum(enquiry);
   const ref = addendum?.number ? `Addendum ${addendum.number}` : 'the Addendum';
   const contract = enquiry.contract?.number ? ` to the Agreement ${enquiry.contract.number}` : ' to the Agreement';
@@ -102,27 +103,27 @@ export function addendumEmail({ enquiry, senderName }) {
     '',
     'Should you require any clarification, please feel free to reach out.',
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
 /* -------------------------------- WhatsApp -------------------------------- */
 
 // HCP.WA.EP
-export function proposalWhatsApp({ enquiry, senderName }) {
+export function proposalWhatsApp({ enquiry, senderName, hotel = HOTEL }) {
   return [
     salutation(enquiry.contactName),
     '',
     'Greetings from Centre Point Hospitality!',
     '',
-    `We appreciate your trust in Hotel Centre Point and look forward to providing you with a memorable experience. Please find attached the Event Proposal for your upcoming ${eventType(enquiry)}. Kindly review the details and feel free to reach out for any clarification.`,
+    `We appreciate your trust in ${hotel} and look forward to providing you with a memorable experience. Please find attached the Event Proposal for your upcoming ${eventType(enquiry)}. Kindly review the details and feel free to reach out for any clarification.`,
     '',
-    signOff(senderName),
+    signOff(senderName, undefined, hotel),
   ].join('\n');
 }
 
 // HCP.WA.EC
-export function contractWhatsApp({ enquiry, senderName }) {
+export function contractWhatsApp({ enquiry, senderName, hotel = HOTEL }) {
   return [
     salutation(enquiry.contactName),
     '',
@@ -130,24 +131,24 @@ export function contractWhatsApp({ enquiry, senderName }) {
     '',
     'We truly appreciate the opportunity to be associated with you. Please find attached the Contract for your review. Kindly share the signed copy at your convenience.',
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
 // HCP.WA.PFI
-export function proformaWhatsApp({ enquiry, senderName }) {
+export function proformaWhatsApp({ enquiry, senderName, hotel = HOTEL }) {
   return [
     salutation(enquiry.contactName),
     '',
     'Greetings from Centre Point Hospitality!',
     '',
-    'We thank you for choosing Hotel Centre Point. Please find attached the Pro-Forma Invoice for your reference. The document outlines the estimated charges and payment details for the proposed reservation.',
+    `We thank you for choosing ${hotel}. Please find attached the Pro-Forma Invoice for your reference. The document outlines the estimated charges and payment details for the proposed reservation.`,
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
-export function addendumWhatsApp({ enquiry, senderName }) {
+export function addendumWhatsApp({ enquiry, senderName, hotel = HOTEL }) {
   const addendum = latestAddendum(enquiry);
   const ref = addendum?.number ? `Addendum ${addendum.number}` : 'the Addendum';
   return [
@@ -157,7 +158,7 @@ export function addendumWhatsApp({ enquiry, senderName }) {
     '',
     `Please find attached ${ref} to the Agreement recording the changes as discussed, along with the revised Pro-Forma Invoice. Kindly share the signed copy at your convenience.`,
     '',
-    signOff(senderName, 'Warm Regards,'),
+    signOff(senderName, 'Warm Regards,', hotel),
   ].join('\n');
 }
 
@@ -178,7 +179,7 @@ const MESSAGES = {
 export const MESSAGE_KINDS = Object.keys(MESSAGES);
 
 /** Subject + email body + WhatsApp text for one document of an enquiry. */
-export function messagesFor(kind, { enquiry, lead, senderName }) {
+export function messagesFor(kind, { enquiry, lead, senderName, hotel = HOTEL }) {
   const entry = MESSAGES[kind];
   if (!entry) return null;
   const number =
@@ -189,12 +190,12 @@ export function messagesFor(kind, { enquiry, lead, senderName }) {
         : kind === 'addendum'
           ? latestAddendum(enquiry)?.number
           : enquiry.proforma?.number;
-  const subject = `${entry.label}${number ? ` ${number}` : ''} — ${lead?.businessName || ''} — ${HOTEL}`;
+  const subject = `${entry.label}${number ? ` ${number}` : ''} — ${lead?.businessName || ''} — ${hotel}`;
   const company = String(lead?.businessName || 'Guest').replace(/[\\/:*?"<>|]/g, '');
   return {
     subject,
-    email: entry.email({ enquiry, senderName }),
-    whatsapp: entry.whatsapp({ enquiry, senderName }),
+    email: entry.email({ enquiry, senderName, hotel }),
+    whatsapp: entry.whatsapp({ enquiry, senderName, hotel }),
     // The PDF is built fresh when the email goes out; this is its name.
     attachment: {
       filename: `${entry.label} ${number || ''} - ${company}.pdf`.replace('  ', ' '),

@@ -43,13 +43,14 @@ const KIND_LABELS = { banquet: 'Banquet', room: 'Rooms', both: 'Banquet + Rooms'
 function RoomSummary({ enquiry }) {
   if (!enquiry.room || enquiry.kind === 'banquet') return null;
   const { checkIn, checkOut, rooms, notes } = enquiry.room;
+  const categories = (enquiry.room.types || []).map((t) => `${t.count} ${t.name}`).join(', ');
   return (
     <p className="text-sm text-foreground">
       <span className="font-medium">Rooms</span>
       <span className="text-muted-foreground">
         {' '}
         — {roomDate(checkIn)} → {roomDate(checkOut)}
-        {rooms ? ` · ${rooms} rooms` : ''}
+        {categories ? ` · ${categories}` : rooms ? ` · ${rooms} rooms` : ''}
         {notes ? ` · ${notes}` : ''}
       </span>
     </p>
@@ -79,6 +80,12 @@ function EnquiryCard({ lead, enquiry, onChanged, onEdit, onDelete }) {
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <StageBadge stage={enquiry.stage} />
+            <span
+              className="rounded border bg-muted/60 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-muted-foreground"
+              title="Property"
+            >
+              {enquiry.property || 'HCP'}
+            </span>
             {dept ? (
               <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                 {dept}

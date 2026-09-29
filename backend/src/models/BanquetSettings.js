@@ -11,7 +11,10 @@ export const PAYMENT_DUE_RULES = ['on_confirmation', 'days_before_event', 'days_
 export const DEFAULT_STAGE_TAT_DAYS = { enquiry: 3, proposal: 7, waitlist: 14, provisional: 7 };
 
 /**
- * Singleton settings document for the banquet calendar.
+ * Banquet settings. The document keyed 'default' holds what applies to the
+ * whole group (stage TAT, payment schedule, prospectus / estimate
+ * recipients); one document per property, keyed by its code (HCP, CPA,
+ * CPNM), holds that hotel's slot rule and demand dates.
  *
  * slotRule (default 'exclusive' — any active enquiry hard-blocks the slot):
  *  - 'exclusive'  — one function per date + venue + session, first come.

@@ -2,8 +2,9 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { sendOk } from '../utils/apiResponse.js';
 import * as configService from '../services/banquetConfig.service.js';
 
-export const getConfig = asyncHandler(async (_req, res) => {
-  const result = await configService.getConfig();
+/** Venues, sessions, menus and settings of one property (?property=CPA; HCP when left out). */
+export const getConfig = asyncHandler(async (req, res) => {
+  const result = await configService.getConfig(req.query.property || 'HCP');
   return sendOk(res, result);
 });
 

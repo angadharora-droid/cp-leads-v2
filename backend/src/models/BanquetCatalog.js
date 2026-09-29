@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { PROPERTY_CODES } from './Property.js';
+
 const { Schema, model } = mongoose;
 
 /**
@@ -23,6 +25,8 @@ export const CATALOG_PRICING = ['per_pax', 'flat'];
 const banquetCatalogSchema = new Schema(
   {
     kind: { type: String, enum: CATALOG_KINDS, required: true, index: true },
+    // Each property keeps its own menus and rates.
+    property: { type: String, enum: PROPERTY_CODES, required: true, default: 'HCP', index: true },
     name: { type: String, required: true, trim: true },
     rate: { type: Number, default: 0, min: 0 },
     pricing: { type: String, enum: CATALOG_PRICING, default: 'per_pax' },
@@ -39,7 +43,7 @@ const banquetCatalogSchema = new Schema(
 );
 
 // One name per kind — "Gold" may exist as both a menu and an add-on.
-banquetCatalogSchema.index({ kind: 1, name: 1 }, { unique: true });
+banquetCatalogSchema.index({ property: 1, kind: 1, name: 1 }, { unique: true });
 
 const BanquetCatalog = model('BanquetCatalog', banquetCatalogSchema);
 

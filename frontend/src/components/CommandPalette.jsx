@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
+  BedDouble,
   Building2,
   CalendarClock,
   CalendarDays,
@@ -30,6 +31,7 @@ const PAGES = [
   { label: 'Enquiries', to: '/enquiries', icon: KanbanSquare, keywords: 'banquet pipeline board' },
   { label: 'Rate Contracts', to: '/rate-contracts', icon: FileSignature, keywords: 'arc corporate agreement' },
   { label: 'Banquet Calendar', to: '/banquet-calendar', icon: CalendarDays, keywords: 'availability venues' },
+  { label: 'Room Calendar', to: '/room-calendar', icon: BedDouble, keywords: 'rooms availability cpa stay' },
   { label: 'Follow-ups', to: '/follow-ups', icon: CalendarClock, keywords: 'due today reminders' },
   { label: 'Reports', to: '/reports', icon: BarChart3, keywords: 'excel export' },
 ];

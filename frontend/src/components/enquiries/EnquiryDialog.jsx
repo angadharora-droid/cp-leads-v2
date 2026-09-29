@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { stageInfo } from '@/lib/enquiryStages';
 import { isIndividual } from '@/lib/departments';
 import { DEMAND_LABELS, functionTarget } from '@/lib/demand';
+import { propertyLabel, useProperties } from '@/lib/properties';
 import DayTimeline from '@/components/banquet/DayTimeline';
 import DepartmentSelect from '@/components/leads/DepartmentSelect';
 import MultiSelect from '@/components/ui/multi-select';
@@ -86,7 +87,25 @@ function emptyFunction() {
 }
 
 function emptyRoom() {
-  return { checkIn: '', checkOut: '', rooms: '', notes: '' };
+  // `types` maps a room category id to the number of rooms asked for, as typed.
+  return { checkIn: '', checkOut: '', types: {}, notes: '' };
+}
+
+/** A function with everything that belongs to one property's Banquet Setup cleared. */
+function withoutPropertyPicks(fn) {
+  return {
+    ...fn,
+    functionType: '',
+    venue: '',
+    addOnRooms: [],
+    hallChargeVenues: [],
+    sessions: [],
+    menuType: '',
+    addOns: [],
+    liquor: [],
+    requirements: [],
+    lineRates: {},
+  };
 }
 
 function toInputDate(value) {
@@ -632,6 +651,7 @@ function FunctionCard({
   conflict,
   focused = false,
   demandDates = [],
+  property = 'HCP',
   onChange,
   onRemove,
 }) {
@@ -919,6 +939,7 @@ function FunctionCard({
         venues={venues}
         sessions={sessions}
         todayStr={todayStr}
+        property={property}
         onPickDate={(d) => set('date', d)}
       />
     </div>
@@ -1009,7 +1030,7 @@ function AvailabilityNotice({ fn, conflict, slotsHeld, todayStr }) {
  * dashed "proposed" bar so a clash is obvious. Arrows move the date; picking
  * one writes it back to the function.
  */
-function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr, onPickDate }) {
+function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr, property, onPickDate }) {
   const [date, setDate] = useState(fn.date || todayStr);
   const [holds, setHolds] = useState(null);
 
@@ -1022,7 +1043,7 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
     let alive = true;
     setHolds(null);
     api
-      .get('/banquet/calendar', { params: { from: date, to: date } })
+      .get('/banquet/calendar', { params: { from: date, to: date, property } })
       .then((res) => {
         if (alive) setHolds(res?.data?.data?.functions || []);
       })
@@ -1032,7 +1053,7 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
     return () => {
       alive = false;
     };
-  }, [open, date]);
+  }, [open, date, property]);
 
   const proposed = [];
   for (const venueId of heldVenues(fn)) {
@@ -1133,21 +1154,23 @@ function AvailabilityDialog({ open, onOpenChange, fn, venues, sessions, todayStr
  * @param {(open: boolean) => void} props.onOpenChange
  * @param {object} props.lead
  * @param {object|null} [props.enquiry] existing enquiry to edit
- * @param {object} props.config banquet config (venues, sessions, catalog)
+ * @param {object} [props.config] banquet config the page already has; the
+ *   form loads the chosen property's own config whenever it differs
  * @param {(enquiry: object) => void} [props.onSaved]
  * @param {(lead: object) => void} [props.onLeadUpdated] a department was
  *   created inline — receives the refreshed lead
  * @param {number|null} [props.focusFunction] index of the function the panel
  *   was opened on (a function card was clicked); it is scrolled into view
  * @param {object|null} [props.prefill] new enquiry only: department and
- *   contact to start from (a lead that was just linked), and/or `function`
- *   ({ date: 'yyyy-MM-dd', venue, sessions }) — the calendar cell it was
- *   started from
+ *   contact to start from (a lead that was just linked)
  * @param {boolean} [props.readOnly] the enquiry is won, lost or cancelled:
  *   everything shows, nothing can be changed or saved
  */
-function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onLeadUpdated, focusFunction = null, readOnly = false, title = '', prefill = null }) {
+function EnquiryDialog({ open, onOpenChange, lead, enquiry, config: givenConfig, onSaved, onLeadUpdated, focusFunction = null, readOnly = false, title = '', prefill = null }) {
   const isEdit = Boolean(enquiry?._id);
+  const properties = useProperties();
+  // Once a document carries the property's numbers, the property is fixed.
+  const propertyLocked = Boolean(enquiry?.proposal?.number || enquiry?.contract?.number || enquiry?.proforma?.number);
   // What saving does once a document exists, said before the exec edits.
   const saveNote = !isEdit || readOnly
     ? ''
@@ -1165,6 +1188,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   // was not typed by hand, so picking another department may replace it.
   const autoContact = useRef(null);
   const [form, setForm] = useState({
+    property: '',
     department: '',
     kind: 'banquet',
     contactName: '',
@@ -1180,6 +1204,28 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   });
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  // The chosen property's venues, sessions, menus and rooms: what the page
+  // passed in when it is that property's, otherwise loaded here.
+  const [loadedConfig, setLoadedConfig] = useState(null);
+  const givenFits = Boolean(givenConfig?.property) && givenConfig.property === form.property;
+  useEffect(() => {
+    if (!open || !form.property || givenFits || loadedConfig?.property === form.property) return undefined;
+    let alive = true;
+    setLoadedConfig(null);
+    api
+      .get('/banquet/config', { params: { property: form.property } })
+      .then((res) => alive && setLoadedConfig(res?.data?.data || null))
+      .catch((err) => alive && toast.error(getErrorMessage(err, `Failed to load ${form.property}'s banquet setup`)));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.property, givenFits]);
+  const config = givenFits ? givenConfig : loadedConfig?.property === form.property ? loadedConfig : null;
+  const configLoading = Boolean(form.property) && !config;
+  const roomTypes = config?.propertyInfo?.roomTypes || [];
+  const propertyHasRooms = roomTypes.some((t) => Number(t.count) > 0);
 
   // The people saved under the chosen department, offered as a pick list
   // when there is a choice to make.
@@ -1211,6 +1257,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
     setConflicts({});
     if (enquiry) {
       setForm({
+        property: enquiry.property || 'HCP',
         department: enquiry.department ? String(enquiry.department) : '',
         kind: enquiry.kind || 'banquet',
         contactName: enquiry.contactName || '',
@@ -1248,7 +1295,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
         room: {
           checkIn: enquiry.room?.checkIn || '',
           checkOut: enquiry.room?.checkOut || '',
-          rooms: enquiry.room?.rooms || '',
+          types: Object.fromEntries((enquiry.room?.types || []).map((t) => [String(t.type), String(t.count)])),
           notes: enquiry.room?.notes || '',
         },
       });
@@ -1264,6 +1311,8 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
           : leadContact(lead);
       autoContact.current = contact;
       setForm({
+        // Picked first, on purpose: every menu, venue and document number depends on it.
+        property: prefill?.property || '',
         department,
         kind: 'banquet',
         ...contact,
@@ -1273,8 +1322,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
         gstNumber: lead?.gstNumber || '',
         panNumber: lead?.panNumber || '',
         paymentTerms: '30% Now, Balance 60 Days',
-        // Started from a free calendar cell: date, venue and session filled in.
-        functions: [prefill?.function ? { ...emptyFunction(), ...prefill.function } : emptyFunction()],
+        functions: [emptyFunction()],
         room: emptyRoom(),
       });
     }
@@ -1295,7 +1343,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   // Live availability across every venue (primary + add-on rooms) x session a
   // function holds. A read-only panel changes nothing, so it checks nothing.
   useEffect(() => {
-    if (!open || !hasBanquet || readOnly) {
+    if (!open || !hasBanquet || readOnly || !form.property) {
       setConflicts({});
       return undefined;
     }
@@ -1329,7 +1377,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
       try {
         const dates = [...new Set(complete.map((fn) => fn.date))];
         const results = await Promise.all(
-          dates.map((date) => api.get('/banquet/calendar', { params: { from: date, to: date } }))
+          dates.map((date) => api.get('/banquet/calendar', { params: { from: date, to: date, property: form.property } }))
         );
         if (!active) return;
         const holds = results.flatMap((res) => res?.data?.data?.functions || []);
@@ -1370,7 +1418,62 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, hasBanquet, readOnly, form.functions, isEdit, enquiry?._id]);
+  }, [open, hasBanquet, readOnly, form.functions, form.property, isEdit, enquiry?._id]);
+
+  // A property without rooms takes banquet enquiries only.
+  useEffect(() => {
+    if (!isEdit && config && !propertyHasRooms && form.kind !== 'banquet') {
+      setForm((f) => ({ ...f, kind: 'banquet' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, propertyHasRooms, isEdit]);
+
+  // Rooms still free in each category on the tightest night of the stay
+  // (other enquiries' holds only), so an overbooking shows before saving.
+  const [roomFree, setRoomFree] = useState(null); // { [typeId]: { free, night } }
+  useEffect(() => {
+    const { checkIn, checkOut } = form.room;
+    if (!open || !hasRooms || !propertyHasRooms || !checkIn || !checkOut || checkOut <= checkIn) {
+      setRoomFree(null);
+      return undefined;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get('/banquet/room-calendar', {
+          params: { property: form.property, from: checkIn, to: checkOut },
+        });
+        if (!alive) return;
+        const holds = (res?.data?.data?.holds || []).filter(
+          (h) => !isEdit || String(h.enquiryId) !== String(enquiry._id)
+        );
+        const nights = [];
+        for (let d = new Date(`${checkIn}T12:00:00`); format(d, 'yyyy-MM-dd') < checkOut; d.setDate(d.getDate() + 1)) {
+          nights.push(format(d, 'yyyy-MM-dd'));
+        }
+        const next = {};
+        for (const t of roomTypes) {
+          let tightest = { free: Number(t.count) || 0, night: nights[0] };
+          for (const night of nights) {
+            const held = holds
+              .filter((h) => h.checkIn <= night && h.checkOut > night)
+              .reduce((sum, h) => sum + (h.types.find((x) => String(x.type) === String(t._id))?.count || 0), 0);
+            const free = (Number(t.count) || 0) - held;
+            if (free < tightest.free) tightest = { free, night };
+          }
+          next[String(t._id)] = tightest;
+        }
+        setRoomFree(next);
+      } catch {
+        if (alive) setRoomFree(null);
+      }
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hasRooms, propertyHasRooms, form.property, form.room.checkIn, form.room.checkOut, config]);
 
   function setField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -1402,6 +1505,27 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
     setForm((f) => ({ ...f, room: { ...f.room, [field]: value } }));
   }
 
+  function setRoomCount(typeId, value) {
+    setForm((f) => ({ ...f, room: { ...f.room, types: { ...f.room.types, [typeId]: value.replace(/[^0-9]/g, '') } } }));
+  }
+
+  /**
+   * Another property means other venues, sessions, menus and room
+   * categories: the picks made so far are cleared (dates, guests and notes
+   * stay), and a property without rooms takes banquet enquiries only.
+   */
+  function pickProperty(code) {
+    setForm((f) => {
+      if (f.property === code) return f;
+      return {
+        ...f,
+        property: code,
+        functions: f.property ? f.functions.map(withoutPropertyPicks) : f.functions,
+        room: { ...f.room, types: {} },
+      };
+    });
+  }
+
   function setFn(index, field, value, extra) {
     setForm((f) => ({
       ...f,
@@ -1424,6 +1548,12 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   const hasConflicts = hasBanquet && Object.values(conflicts).some((c) => c.duplicate);
   const willWaitlist = hasBanquet && Object.values(conflicts).some((c) => c.taken?.length);
 
+  // The rooms asked for, per category of the property.
+  const roomLines = roomTypes
+    .map((t) => ({ type: String(t._id), count: parseInt(form.room.types?.[String(t._id)], 10) || 0 }))
+    .filter((line) => line.count > 0);
+  const roomsTotal = roomLines.reduce((sum, line) => sum + line.count, 0);
+
   // Running total of what is being offered, shown in the footer.
   const total = useMemo(() => {
     if (!hasBanquet) return 0;
@@ -1431,6 +1561,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
   }, [form.functions, catalog, venues, hasBanquet]);
 
   async function handleSave() {
+    if (!form.property) return toast.error('Pick the property this enquiry is for');
     if (needsDepartment && !form.department) {
       return toast.error('Pick the branch / department this enquiry belongs to');
     }
@@ -1450,8 +1581,11 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
     if (hasRooms) {
       if (!form.room.checkIn) return toast.error('Rooms: pick the check-in date');
       if (!form.room.checkOut) return toast.error('Rooms: pick the check-out date');
-      if (form.room.checkOut < form.room.checkIn)
-        return toast.error('Rooms: check-out cannot be before check-in');
+      if (form.room.checkOut <= form.room.checkIn)
+        return toast.error('Rooms: check-out must be after check-in');
+      if (!roomLines.length) return toast.error('Rooms: enter how many rooms of each category');
+      const over = roomTypes.find((t) => (parseInt(form.room.types[String(t._id)], 10) || 0) > Number(t.count));
+      if (over) return toast.error(`Rooms: ${form.property} has ${over.count} ${over.name} room${over.count === 1 ? '' : 's'}`);
     }
 
     const payload = {
@@ -1496,11 +1630,12 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
       payload.room = {
         checkIn: form.room.checkIn,
         checkOut: form.room.checkOut,
-        rooms: form.room.rooms.trim(),
+        types: roomLines,
         notes: form.room.notes.trim(),
       };
     }
     if (!isEdit) payload.kind = form.kind;
+    if (!isEdit || form.property !== (enquiry.property || 'HCP')) payload.property = form.property;
     if (needsDepartment) payload.department = form.department;
 
     setIsSaving(true);
@@ -1518,13 +1653,16 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
     }
   }
 
+  // Judged only once the property's setup has loaded, never while it loads.
   const missingSetup =
     hasBanquet &&
+    Boolean(config) &&
     (venues.length === 0 || sessions.length === 0 || catalog.functionTypes.length === 0);
   const roomsOrderError =
-    hasRooms && form.room.checkIn && form.room.checkOut && form.room.checkOut < form.room.checkIn
-      ? 'Check-out cannot be before check-in.'
+    hasRooms && form.room.checkIn && form.room.checkOut && form.room.checkOut <= form.room.checkIn
+      ? 'Check-out must be after check-in.'
       : '';
+  const kindOptions = propertyHasRooms ? KIND_OPTIONS : KIND_OPTIONS.filter((k) => k.value === 'banquet');
 
   return (
     <SidePanel open={open} onOpenChange={(next) => !isSaving && onOpenChange(next)}>
@@ -1542,9 +1680,9 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
         <SidePanelBody>
         {missingSetup ? (
           <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-            {venues.length === 0 ? 'No venues configured. ' : ''}
-            {sessions.length === 0 ? 'No sessions configured. ' : ''}
-            {catalog.functionTypes.length === 0 ? 'No function types configured. ' : ''}
+            {form.property}: {venues.length === 0 ? 'no venues configured. ' : ''}
+            {sessions.length === 0 ? 'no sessions configured. ' : ''}
+            {catalog.functionTypes.length === 0 ? 'no function types configured. ' : ''}
             An admin can add them under Banquet Setup.
           </p>
         ) : null}
@@ -1566,6 +1704,29 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
               description="Where it sits and who the hotel deals with."
             />
             <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="enq-property">
+                  Property
+                  <RequiredMark />
+                </Label>
+                <Select value={form.property} onValueChange={pickProperty} disabled={propertyLocked}>
+                  <SelectTrigger id="enq-property" aria-invalid={!form.property}>
+                    <SelectValue placeholder="HCP, CPA or CPNM — pick the hotel first" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(properties || []).map((p) => (
+                      <SelectItem key={p.code} value={p.code}>
+                        {propertyLabel(p)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {propertyLocked
+                    ? `Fixed: the documents already carry ${form.property} numbers.`
+                    : 'Its venues, menus, rooms and letterhead are used. Changing it clears the venues and menus picked so far.'}
+                </p>
+              </div>
               {needsDepartment ? (
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="enq-dept">
@@ -1592,7 +1753,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                     <SelectValue placeholder="Enquiry type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {KIND_OPTIONS.map((k) => (
+                    {kindOptions.map((k) => (
                       <SelectItem key={k.value} value={k.value}>
                         {k.label}
                       </SelectItem>
@@ -1687,8 +1848,16 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
             </div>
           </section>
 
+          {!form.property ? (
+            <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+              Pick the property above — its venues, menus and rooms appear here.
+            </p>
+          ) : configLoading ? (
+            <Skeleton className="h-40 w-full rounded-lg" />
+          ) : null}
+
           {/* Functions */}
-          {hasBanquet ? (
+          {hasBanquet && config ? (
             <section className="space-y-3">
               <SectionHeading
                 icon={CalendarDays}
@@ -1714,6 +1883,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                   conflict={conflicts[index]}
                   focused={focusFunction === index}
                   demandDates={config?.settings?.demandDates || []}
+                  property={form.property}
                   onChange={setFn}
                   onRemove={removeFn}
                 />
@@ -1722,14 +1892,14 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
           ) : null}
 
           {/* Rooms */}
-          {hasRooms ? (
+          {hasRooms && config ? (
             <section className="space-y-3">
               <SectionHeading
                 icon={BedDouble}
                 title="Room details"
-                description="The stay this enquiry covers."
+                description={`The stay this enquiry covers — rooms held every night from check-in to the night before check-out, on ${form.property}'s room calendar.`}
               />
-              <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-3">
+              <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="enq-checkin">
                     Check-in
@@ -1762,23 +1932,56 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                     </p>
                   ) : null}
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="enq-rooms">No. of rooms</Label>
-                  <Input
-                    id="enq-rooms"
-                    inputMode="numeric"
-                    value={form.room.rooms}
-                    onChange={(e) => setRoom('rooms', e.target.value)}
-                    placeholder="10"
-                  />
+                <div className="space-y-2 sm:col-span-2">
+                  <p className="text-sm font-medium text-foreground">
+                    Rooms by category
+                    <RequiredMark />
+                  </p>
+                  <ul className="divide-y rounded-md border bg-card" aria-label="Rooms by category">
+                    {roomTypes.map((t) => {
+                      const id = String(t._id);
+                      const asked = parseInt(form.room.types?.[id], 10) || 0;
+                      const avail = roomFree?.[id];
+                      const short = avail && asked > avail.free;
+                      return (
+                        <li key={id} className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3 px-3 py-2">
+                          <div className="min-w-0">
+                            <Label htmlFor={`enq-room-${id}`} className="font-medium">
+                              {t.name}
+                            </Label>
+                            <p className={cn('text-xs tabular-nums', short ? 'font-medium text-warning' : 'text-muted-foreground')}>
+                              {t.count} in all
+                              {avail
+                                ? short
+                                  ? ` · only ${Math.max(0, avail.free)} free on ${format(new Date(`${avail.night}T12:00:00`), 'd MMM')} — this overbooks it`
+                                  : ` · ${avail.free} free every night of the stay`
+                                : ''}
+                            </p>
+                          </div>
+                          <Input
+                            id={`enq-room-${id}`}
+                            inputMode="numeric"
+                            value={form.room.types?.[id] || ''}
+                            onChange={(e) => setRoomCount(id, e.target.value)}
+                            placeholder="0"
+                            className="text-right tabular-nums"
+                            aria-invalid={asked > Number(t.count)}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {roomsTotal} room{roomsTotal === 1 ? '' : 's'} a night
+                  </p>
                 </div>
-                <div className="space-y-1.5 sm:col-span-3">
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="enq-room-notes">Room notes</Label>
                   <Input
                     id="enq-room-notes"
                     value={form.room.notes}
                     onChange={(e) => setRoom('notes', e.target.value)}
-                    placeholder="Room category, meal plan, special requests…"
+                    placeholder="Occupancy, meal plan, special requests…"
                   />
                 </div>
               </div>
@@ -1799,7 +2002,12 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
                   {inr(total)}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {form.functions.length} function{form.functions.length > 1 ? 's' : ''}
+                  {[
+                    hasBanquet ? `${form.functions.length} function${form.functions.length > 1 ? 's' : ''}` : '',
+                    hasRooms && roomsTotal ? `${roomsTotal} room${roomsTotal === 1 ? '' : 's'} a night (rooms are priced separately)` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -1838,7 +2046,7 @@ function EnquiryDialog({ open, onOpenChange, lead, enquiry, config, onSaved, onL
               {readOnly ? 'Close' : 'Cancel'}
             </Button>
             {readOnly ? null : (
-              <Button onClick={handleSave} disabled={isSaving || missingSetup || hasConflicts}>
+              <Button onClick={handleSave} disabled={isSaving || missingSetup || hasConflicts || configLoading}>
                 {isSaving ? <Spinner size="sm" className="text-current" /> : null}
                 {isEdit ? 'Save changes' : 'Create enquiry'}
               </Button>
